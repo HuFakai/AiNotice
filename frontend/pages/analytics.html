@@ -6,6 +6,7 @@
     <title>API统计分析 - 爱通知</title>
     <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
     <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <style>
         .analytics-header {
@@ -371,7 +372,7 @@
         }
     </style>
 </head>
-<body>
+<body data-page="analytics" data-title="API统计">
     <!-- 导航栏 -->
     <nav class="navbar">
         <div class="container">
@@ -571,7 +572,8 @@
 
     <script src="../js/api.js"></script>
     <script src="../js/utils.js"></script>
-    <script src="../js/app.js"></script>
+    <script src="../js/layout.js"></script>
     <script src="../js/analytics.js"></script>
+    <script>Layout.mount();</script>
 </body>
 </html>

@@ -6,6 +6,7 @@
   <title>开发文档 - 爱通知</title>
     <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
      <link rel="stylesheet" href="../css/main.css">
+     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     .doc-container { max-width: 1080px; margin: 0 auto; padding: var(--spacing-2xl) var(--spacing-xl); }
     .doc-header { margin-bottom: var(--spacing-xl); }
@@ -27,7 +28,7 @@
     .badge-post { background: #dcfce7; color: #14532d; }
   </style>
 </head>
-<body>
+<body data-page="docs" data-title="开发文档">
   <nav class="navbar">
     <div class="container">
       <div class="navbar-content">
@@ -329,7 +330,7 @@ func main(){
 
   <script src="../js/utils.js"></script>
     <script src="../js/api.js"></script>
-    <script src="../js/app.js"></script>
+    <script src="../js/layout.js"></script>
   <script>
     // 设置右上角用户名和导航栏状态
     document.addEventListener('DOMContentLoaded', () => {
@@ -363,6 +364,7 @@ func main(){
       }
     }
   </script>
+    <script>Layout.mount();</script>
 </body>
 </html>
 

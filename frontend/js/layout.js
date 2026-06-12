@@ -5,8 +5,9 @@
  *
  * 页面用法：
  *   <body data-page="dashboard" data-title="控制台">
- *     <div class="app-main"><div class="content-wrapper"> 页面内容 </div></div>
+ *     ...页面内容（无需手写侧边栏/顶栏）...
  *     <script>Layout.mount();</script>
+ *   layout.js 会移除旧的 .navbar、把现有内容包入外壳并注入侧边栏+顶栏。
  */
 (function () {
   const NAV = [
@@ -30,8 +31,7 @@
         return;
       }
 
-      this._renderSidebar(page);
-      this._renderTopbar(title);
+      this._restructure(page, title);
       this._bindEvents();
       this._fillUser();
 
@@ -41,12 +41,36 @@
 
     _hasToken() { return !!localStorage.getItem('auth_token'); },
 
-    _renderSidebar(page) {
+    /** 移除旧的重复顶部导航，把现有页面内容包入外壳，并注入侧边栏+顶栏 */
+    _restructure(page, title) {
+      // 移除各页复制粘贴的旧顶部导航
+      document.querySelectorAll('.navbar').forEach(n => n.remove());
+
+      // 将 body 现有子节点收集为页面内容
+      const wrapper = document.createElement('div');
+      wrapper.className = 'content-wrapper';
+      while (document.body.firstChild) wrapper.appendChild(document.body.firstChild);
+
+      const sidebar = this._buildSidebar(page);
+      const backdrop = document.createElement('div');
+      backdrop.className = 'sidebar-backdrop';
+      backdrop.id = 'sidebarBackdrop';
+
+      const main = document.createElement('div');
+      main.className = 'app-main';
+      main.appendChild(this._buildTopbar(title));
+      main.appendChild(wrapper);
+
+      document.body.appendChild(sidebar);
+      document.body.appendChild(backdrop);
+      document.body.appendChild(main);
+    },
+
+    _buildSidebar(page) {
       const links = NAV.map(n => `
         <a href="${n.href}" class="sidebar-link${n.key === page ? ' active' : ''}">
           <i class="fas ${n.icon}"></i><span>${n.label}</span>
         </a>`).join('');
-
       const aside = document.createElement('aside');
       aside.className = 'app-sidebar';
       aside.id = 'appSidebar';
@@ -62,17 +86,10 @@
         <div class="sidebar-footer">
           <a href="#" class="sidebar-link" id="navLogout"><i class="fas fa-right-from-bracket"></i><span>退出登录</span></a>
         </div>`;
-      document.body.insertBefore(aside, document.body.firstChild);
-
-      const backdrop = document.createElement('div');
-      backdrop.className = 'sidebar-backdrop';
-      backdrop.id = 'sidebarBackdrop';
-      document.body.insertBefore(backdrop, aside.nextSibling);
+      return aside;
     },
 
-    _renderTopbar(title) {
-      const main = document.querySelector('.app-main');
-      if (!main) return;
+    _buildTopbar(title) {
       const bar = document.createElement('header');
       bar.className = 'app-topbar';
       bar.innerHTML = `
@@ -87,7 +104,7 @@
             <i class="fas fa-chevron-down" style="font-size:11px;color:var(--text-3)"></i>
           </div>
         </div>`;
-      main.insertBefore(bar, main.firstChild);
+      return bar;
     },
 
     _bindEvents() {
