@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 ### 启动服务
 ```bash
-python3 start_server.py
+python3 start.py
 ```
 
 服务启动后访问：
@@ -180,13 +180,8 @@ MI_PASS=your_xiaomi_password
 
 ## 🧪 测试
 
-```bash
-# 运行完整测试
-python3 test_login_fix.py
-
-# 测试特定功能
-python3 test_auth_apis.py
-```
+> 暂未提供自动化测试套件。可通过 Swagger UI（`/docs`）或 `curl` 手动验证各接口。
+> 后续将为 auth / api-keys / speak 关键路径补充 pytest 冒烟测试。
 
 ## 📁 项目结构
 
@@ -205,7 +200,7 @@ miAPI/
 ├── database/              # 数据库脚本
 ├── docs/                  # 项目文档
 ├── requirements.txt       # Python依赖
-├── start_server.py        # 启动脚本
+├── start.py               # 启动脚本
 └── README.md             # 项目说明
 ```
 

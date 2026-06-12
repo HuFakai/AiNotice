@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     password_min_length: int = Field(default=8, description="密码最小长度")
     api_key_length: int = Field(default=64, description="API密钥长度")
 
+    # CORS 配置（逗号分隔的允许来源；"*" 表示全部。使用 Bearer 令牌认证，默认无需携带 Cookie 凭据）
+    cors_origins: str = Field(default="*", description="允许的跨域来源，逗号分隔")
+
     # 平台配置
     platform_name: str = Field(default="爱通知小爱音箱消息推送统一API平台", description="平台名称")
     registration_enabled: bool = Field(default=True, description="是否允许用户注册")

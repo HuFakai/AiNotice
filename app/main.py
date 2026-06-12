@@ -148,10 +148,13 @@ def create_app() -> FastAPI:
     )
 
     # 添加CORS中间件
+    # 平台使用 Authorization: Bearer 令牌认证（非 Cookie），因此 allow_origins="*" 时不携带凭据，
+    # 避免「* + allow_credentials=True」这一无效且不安全的组合。
+    cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()] or ["*"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # 开发阶段允许所有来源
-        allow_credentials=True,
+        allow_origins=cors_origins,
+        allow_credentials=(cors_origins != ["*"]),
         allow_methods=["*"],
         allow_headers=["*"],
     )

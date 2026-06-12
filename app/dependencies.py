@@ -192,32 +192,23 @@ async def get_user_from_jwt_or_api_key(
         )
 
     token = credentials.credentials
-    logger.info(f"混合认证开始: token前缀={token[:20]}...")
-    
-    # 首先尝试API密钥认证
-    # 检查token是否是API密钥格式（以xai_sk_开头）
+
+    # 首先尝试API密钥认证（以 xai_sk_ 开头）
     if token.startswith("xai_sk_"):
-        logger.info("检测到API密钥格式，尝试API密钥认证")
         try:
             is_valid, user, api_key_obj = await api_key_service.verify_api_key(token)
             if is_valid and user and api_key_obj:
-                logger.info(f"API密钥认证成功: 用户={user.username}, 密钥={api_key_obj.key_name}")
+                logger.debug(f"API密钥认证成功: 用户={user.username}")
                 return user
-            else:
-                logger.warning(f"API密钥认证失败: is_valid={is_valid}, user={user}, api_key_obj={api_key_obj}")
         except Exception as e:
             logger.warning(f"API密钥认证异常: {e}")
-    else:
-        logger.info("检测到JWT格式，尝试JWT认证")
 
-    # 如果API密钥认证失败，尝试JWT认证
+    # 否则（或API密钥认证失败）尝试JWT认证
     try:
         is_valid, user = await auth_service.verify_token(token)
         if is_valid and user:
-            logger.info(f"JWT认证成功: 用户={user.username}")
+            logger.debug(f"JWT认证成功: 用户={user.username}")
             return user
-        else:
-            logger.warning(f"JWT认证失败: is_valid={is_valid}, user={user}")
     except Exception as e:
         logger.warning(f"JWT认证异常: {e}")
 
@@ -288,25 +279,26 @@ def get_client_ip(request: Request) -> str:
     """
     获取客户端IP地址
 
+    仅依据反向代理头与连接信息解析，**不做任何外部网络调用**
+    （此前版本会在本地请求时同步访问 httpbin.org / 建立 socket，
+    在异步框架中造成阻塞，已移除）。
+
     Args:
         request: 请求对象
 
     Returns:
         客户端IP地址
     """
-    import socket
-    import requests
-    from ipaddress import ip_address, AddressValueError
-    
-    # 尝试从代理头部获取真实IP
+    from ipaddress import ip_address
+
+    # 优先从反向代理头获取真实IP
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
         ip = forwarded_for.split(",")[0].strip()
         try:
-            # 验证IP地址格式
             ip_address(ip)
             return ip
-        except AddressValueError:
+        except ValueError:
             pass
 
     real_ip = request.headers.get("X-Real-IP")
@@ -314,44 +306,11 @@ def get_client_ip(request: Request) -> str:
         try:
             ip_address(real_ip)
             return real_ip
-        except AddressValueError:
+        except ValueError:
             pass
 
-    # 获取直接连接的IP
+    # 直接连接的客户端IP
     client_ip = request.client.host if request.client else None
-    
-    # 如果是本地IP（127.0.0.1或localhost），尝试获取真实的网络IP
-    if client_ip in ["127.0.0.1", "localhost", "::1"] or not client_ip:
-        try:
-            # 方法1: 通过连接外部服务获取本机公网IP
-            try:
-                response = requests.get("https://httpbin.org/ip", timeout=3)
-                if response.status_code == 200:
-                    public_ip = response.json().get("origin")
-                    if public_ip:
-                        # 如果有多个IP，取第一个
-                        public_ip = public_ip.split(",")[0].strip()
-                        ip_address(public_ip)  # 验证IP格式
-                        return public_ip
-            except:
-                pass
-            
-            # 方法2: 获取本机局域网IP
-            try:
-                # 创建一个UDP socket连接到外部地址（不会实际发送数据）
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                    s.connect(("8.8.8.8", 80))
-                    local_ip = s.getsockname()[0]
-                    if local_ip and local_ip != "127.0.0.1":
-                        ip_address(local_ip)  # 验证IP格式
-                        return local_ip
-            except:
-                pass
-                
-        except Exception:
-            pass
-    
-    # 如果以上方法都失败，返回原始IP或unknown
     return client_ip if client_ip else "unknown"
 
 
