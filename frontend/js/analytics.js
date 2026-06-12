@@ -13,8 +13,8 @@ let currentPage = 1;
 const pageSize = 20;
 let refreshInterval = null;
 
-// API基础URL
-const API_BASE_URL = 'http://localhost:9000/api/v1';
+// API基础URL（同源相对路径，由 FastAPI 静态托管，避免硬编码端口）
+const API_BASE_URL = '/api/v1';
 
 /**
  * 检查用户登录状态

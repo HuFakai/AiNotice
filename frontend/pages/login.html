@@ -6,187 +6,48 @@
     <title>用户登录 - 爱通知</title>
     <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
     <link rel="stylesheet" href="../css/main.css">
-    <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: var(--spacing-md);
-        }
-
-        .login-container {
-            width: 100%;
-            max-width: 400px;
-        }
-
-        .login-card {
-            background: var(--bg-primary);
-            border-radius: var(--radius-xl);
-            box-shadow: var(--shadow-xl);
-            padding: var(--spacing-2xl);
-            text-align: center;
-        }
-
-        .login-header {
-            margin-bottom: var(--spacing-2xl);
-        }
-
-        .login-logo {
-            width: 64px;
-            height: 64px;
-            background: var(--primary-color);
-            border-radius: var(--radius-xl);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto var(--spacing-lg);
-            font-size: 2rem;
-        }
-
-        .login-title {
-            font-size: 1.75rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: var(--spacing-sm);
-        }
-
-        .login-subtitle {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-        }
-
-        .login-form {
-            text-align: left;
-        }
-
-        .form-group {
-            margin-bottom: var(--spacing-lg);
-        }
-
-        .form-input {
-            height: 48px;
-            font-size: 1rem;
-        }
-
-        .login-actions {
-            display: flex;
-            flex-direction: column;
-            gap: var(--spacing-md);
-            margin-top: var(--spacing-xl);
-        }
-
-        .btn-login {
-            height: 48px;
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        .login-footer {
-            margin-top: var(--spacing-2xl);
-            padding-top: var(--spacing-xl);
-            border-top: 1px solid var(--gray-200);
-            text-align: center;
-        }
-
-        .login-link {
-            color: var(--primary-color);
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .login-link:hover {
-            text-decoration: underline;
-        }
-
-        .password-toggle {
-            position: relative;
-        }
-
-        .password-toggle-btn {
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            padding: 4px;
-            border-radius: var(--radius-sm);
-        }
-
-        .password-toggle-btn:hover {
-            color: var(--text-primary);
-            background: var(--gray-100);
-        }
-
-        @media (max-width: 480px) {
-            .login-card {
-                padding: var(--spacing-xl);
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-header">
-                <div class="login-logo">
-                    <img src="../assets/logo.svg" alt="爱通知" width="60" height="60">
-                </div>
-                <h1 class="login-title">欢迎回来</h1>
-                <p class="login-subtitle">登录到爱通知小爱音箱消息推送统一API平台</p>
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-brand">
+                <span class="brand-logo"><i class="fas fa-bell"></i></span>
+                <span>爱通知</span>
             </div>
+            <p class="auth-subtitle">登录到小爱音箱消息推送统一API平台</p>
 
-            <form id="loginForm" class="login-form">
+            <form id="loginForm">
                 <div class="form-group">
                     <label for="username" class="form-label">用户名或邮箱</label>
-                    <input 
-                        type="text" 
-                        id="username" 
-                        name="username_or_email" 
-                        class="form-input" 
-                        placeholder="请输入用户名或邮箱"
-                        required
-                        autocomplete="username"
-                    >
+                    <input type="text" id="username" name="username_or_email" class="form-input"
+                           placeholder="请输入用户名或邮箱" required autocomplete="username">
                 </div>
 
                 <div class="form-group">
                     <label for="password" class="form-label">密码</label>
-                    <div class="password-toggle">
-                        <input 
-                            type="password" 
-                            id="password" 
-                            name="password" 
-                            class="form-input" 
-                            placeholder="请输入密码"
-                            required
-                            autocomplete="current-password"
-                        >
-                        <button type="button" class="password-toggle-btn" onclick="togglePassword()">
-                            👁️
+                    <div class="password-toggle" style="position:relative">
+                        <input type="password" id="password" name="password" class="form-input"
+                               placeholder="请输入密码" required autocomplete="current-password" style="padding-right:42px">
+                        <button type="button" class="password-toggle-btn" onclick="togglePassword()"
+                                style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-3);cursor:pointer">
+                            <i class="fas fa-eye"></i>
                         </button>
                     </div>
                 </div>
 
-                <div class="login-actions">
-                    <button type="submit" class="btn btn-primary btn-login" id="loginBtn">
-                        <span class="btn-text">登录</span>
-                        <span class="loading hidden">登录中...</span>
-                    </button>
-                </div>
+                <button type="submit" class="btn btn-primary btn-lg btn-block" id="loginBtn">
+                    <span class="btn-text">登录</span>
+                    <span class="loading hidden"></span>
+                </button>
             </form>
 
-            <div class="login-footer">
-                <p>还没有账户？ <a href="/register" class="login-link">立即注册</a></p>
-            </div>
+            <p class="text-center text-secondary mt-xl" style="font-size:.9rem">
+                还没有账户？ <a href="/register">立即注册</a>
+            </p>
         </div>
     </div>
 
-    <!-- JavaScript -->
     <script src="../js/utils.js"></script>
     <script src="../js/api.js"></script>
     <script>
@@ -195,24 +56,16 @@
                 this.form = document.getElementById('loginForm');
                 this.loginBtn = document.getElementById('loginBtn');
                 this.validator = new utils.FormValidator(this.form);
-                
                 this.init();
             }
 
             init() {
-                // 检查是否已登录
                 if (window.apiClient.isAuthenticated()) {
                     this.redirectToDashboard();
                     return;
                 }
-
-                // 设置验证规则
                 this.setupValidation();
-                
-                // 绑定事件
                 this.bindEvents();
-                
-                // 自动填充记住的用户名
                 this.loadRememberedUsername();
             }
 
@@ -224,51 +77,26 @@
 
             bindEvents() {
                 this.form.addEventListener('submit', (e) => this.handleSubmit(e));
-                
-                // Enter键登录
-                this.form.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        this.handleSubmit(e);
-                    }
-                });
             }
 
             loadRememberedUsername() {
-                const rememberedUsername = localStorage.getItem('remembered_username');
-                if (rememberedUsername) {
-                    document.getElementById('username').value = rememberedUsername;
+                const remembered = localStorage.getItem('remembered_username');
+                if (remembered) {
+                    document.getElementById('username').value = remembered;
                     document.getElementById('password').focus();
                 }
             }
 
             async handleSubmit(e) {
                 e.preventDefault();
-                
-                // 验证表单
-                if (!this.validator.validate()) {
-                    return;
-                }
-
+                if (!this.validator.validate()) return;
                 const formData = this.validator.getData();
-                
                 try {
                     this.setLoading(true);
-                    
-                    // 调用登录API
-                    const response = await window.apiClient.login(formData);
-                    
-                    // 记住用户名
+                    await window.apiClient.login(formData);
                     localStorage.setItem('remembered_username', formData.username_or_email);
-                    
-                    // 显示成功消息
                     window.notifications.success('登录成功！正在跳转...');
-                    
-                    // 跳转到控制台
-                    setTimeout(() => {
-                        this.redirectToDashboard();
-                    }, 1000);
-                    
+                    setTimeout(() => this.redirectToDashboard(), 800);
                 } catch (error) {
                     console.error('登录失败:', error);
                     window.notifications.error(error.message || '登录失败，请检查用户名和密码');
@@ -280,51 +108,26 @@
             setLoading(loading) {
                 const btnText = this.loginBtn.querySelector('.btn-text');
                 const btnLoading = this.loginBtn.querySelector('.loading');
-                
-                if (loading) {
-                    btnText.classList.add('hidden');
-                    btnLoading.classList.remove('hidden');
-                    this.loginBtn.disabled = true;
-                } else {
-                    btnText.classList.remove('hidden');
-                    btnLoading.classList.add('hidden');
-                    this.loginBtn.disabled = false;
-                }
+                btnText.classList.toggle('hidden', loading);
+                btnLoading.classList.toggle('hidden', !loading);
+                this.loginBtn.disabled = loading;
             }
 
             redirectToDashboard() {
-                // 检查是否有重定向参数
-                const urlParams = new URLSearchParams(window.location.search);
-                const redirectTo = urlParams.get('redirect');
-                
-                if (redirectTo) {
-                    // 重定向到原始请求的页面
-                    window.location.href = redirectTo;
-                } else {
-                    // 默认重定向到控制台
-                    window.location.href = '/dashboard';
-                }
+                const redirectTo = new URLSearchParams(window.location.search).get('redirect');
+                window.location.href = redirectTo || '/dashboard';
             }
         }
 
-        // 密码显示/隐藏切换
         function togglePassword() {
-            const passwordInput = document.getElementById('password');
-            const toggleBtn = document.querySelector('.password-toggle-btn');
-            
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                toggleBtn.textContent = '🙈';
-            } else {
-                passwordInput.type = 'password';
-                toggleBtn.textContent = '👁️';
-            }
+            const input = document.getElementById('password');
+            const icon = document.querySelector('.password-toggle-btn i');
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            icon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
         }
 
-        // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', () => {
-            new LoginPage();
-        });
+        document.addEventListener('DOMContentLoaded', () => new LoginPage());
     </script>
 </body>
 </html>

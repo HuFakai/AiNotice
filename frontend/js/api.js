@@ -3,7 +3,7 @@
  */
 
 class ApiClient {
-    constructor(baseURL = 'http://localhost:9000/api/v1') {
+    constructor(baseURL = '/api/v1') {
         this.baseURL = baseURL;
         this.token = this.getToken();
     }

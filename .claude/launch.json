@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8123", "--directory", "frontend"],
+      "port": 8123
+    },
+    {
+      "name": "ainotice-api",
+      "runtimeExecutable": "/usr/local/bin/python3.9",
+      "runtimeArgs": ["start.py"],
+      "port": 9000
+    }
+  ]
+}

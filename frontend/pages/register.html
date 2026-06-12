@@ -6,242 +6,47 @@
     <title>用户注册 - 爱通知</title>
     <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
     <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: var(--spacing-md);
-        }
-
-        .register-container {
-            width: 100%;
-            max-width: 480px;
-        }
-
-        .register-card {
-            background: var(--bg-primary);
-            border-radius: var(--radius-xl);
-            box-shadow: var(--shadow-xl);
-            padding: var(--spacing-2xl);
-            text-align: center;
-        }
-
-        .register-header {
-            margin-bottom: var(--spacing-2xl);
-        }
-
-        .register-logo {
-            width: 64px;
-            height: 64px;
-            background: var(--primary-color);
-            border-radius: var(--radius-xl);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto var(--spacing-lg);
-            font-size: 2rem;
-        }
-
-        .register-title {
-            font-size: 1.75rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: var(--spacing-sm);
-        }
-
-        .register-subtitle {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-        }
-
-        .register-form {
-            text-align: left;
-        }
-
-        .form-group {
-            margin-bottom: var(--spacing-lg);
-        }
-
-        .form-input {
-            height: 48px;
-            font-size: 1rem;
-        }
-
-        .password-strength {
-            margin-top: var(--spacing-sm);
-            padding: var(--spacing-sm);
-            border-radius: var(--radius-sm);
-            font-size: 0.75rem;
-            transition: all var(--transition-fast);
-        }
-
-        .password-strength.weak {
-            background: #fef2f2;
-            color: #dc2626;
-            border: 1px solid #fecaca;
-        }
-
-        .password-strength.medium {
-            background: #fffbeb;
-            color: #d97706;
-            border: 1px solid #fed7aa;
-        }
-
-        .password-strength.strong {
-            background: #f0fdf4;
-            color: #16a34a;
-            border: 1px solid #bbf7d0;
-        }
-
-        .password-requirements {
-            margin-top: var(--spacing-sm);
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-        }
-
-        .password-requirements ul {
-            margin: 0;
-            padding-left: var(--spacing-lg);
-        }
-
-        .password-requirements li {
-            margin-bottom: 2px;
-        }
-
-        .password-requirements li.valid {
-            color: var(--secondary-color);
-        }
-
-        .register-actions {
-            display: flex;
-            flex-direction: column;
-            gap: var(--spacing-md);
-            margin-top: var(--spacing-xl);
-        }
-
-        .btn-register {
-            height: 48px;
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        .register-footer {
-            margin-top: var(--spacing-2xl);
-            padding-top: var(--spacing-xl);
-            border-top: 1px solid var(--gray-200);
-            text-align: center;
-        }
-
-        .register-link {
-            color: var(--primary-color);
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .register-link:hover {
-            text-decoration: underline;
-        }
-
-        .password-toggle {
-            position: relative;
-        }
-
-        .password-toggle-btn {
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            padding: 4px;
-            border-radius: var(--radius-sm);
-        }
-
-        .password-toggle-btn:hover {
-            color: var(--text-primary);
-            background: var(--gray-100);
-        }
-
-        @media (max-width: 480px) {
-            .register-card {
-                padding: var(--spacing-xl);
-            }
-        }
+        .password-strength { margin-top: 8px; padding: 8px 10px; border-radius: var(--radius-sm); font-size: .75rem; font-weight: 600; }
+        .password-strength.weak { background: var(--danger-50); color: #dc2626; }
+        .password-strength.medium { background: var(--warning-50); color: #b45309; }
+        .password-strength.strong { background: var(--success-50); color: #16a34a; }
+        .password-requirements { margin-top: 8px; font-size: .75rem; color: var(--text-2); }
+        .password-requirements ul { margin: 0; padding-left: 18px; }
+        .password-requirements li.valid { color: var(--success); }
     </style>
 </head>
 <body>
-    <div class="register-container">
-        <div class="register-card">
-            <div class="register-header">
-                <div class="register-logo">
-                    <img src="../assets/logo.svg" alt="爱通知" width="60" height="60">
-                </div>
-                <h1 class="register-title">创建账户</h1>
-                <p class="register-subtitle">注册爱通知小爱音箱消息推送统一API平台账户</p>
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-brand">
+                <span class="brand-logo"><i class="fas fa-bell"></i></span>
+                <span>爱通知</span>
             </div>
+            <p class="auth-subtitle">创建你的小爱音箱消息推送平台账户</p>
 
-            <form id="registerForm" class="register-form">
+            <form id="registerForm">
                 <div class="form-group">
                     <label for="username" class="form-label">用户名</label>
-                    <input 
-                        type="text" 
-                        id="username" 
-                        name="username" 
-                        class="form-input" 
-                        placeholder="请输入用户名（3-20位字符）"
-                        required
-                        autocomplete="username"
-                    >
+                    <input type="text" id="username" name="username" class="form-input" placeholder="3-20位字母/数字/下划线" required autocomplete="username">
                 </div>
-
                 <div class="form-group">
                     <label for="email" class="form-label">邮箱地址</label>
-                    <input 
-                        type="email" 
-                        id="email" 
-                        name="email" 
-                        class="form-input" 
-                        placeholder="请输入邮箱地址"
-                        required
-                        autocomplete="email"
-                    >
+                    <input type="email" id="email" name="email" class="form-input" placeholder="请输入邮箱地址" required autocomplete="email">
                 </div>
-
                 <div class="form-group">
                     <label for="displayName" class="form-label">显示名称</label>
-                    <input 
-                        type="text" 
-                        id="displayName" 
-                        name="display_name" 
-                        class="form-input" 
-                        placeholder="请输入显示名称"
-                        required
-                    >
+                    <input type="text" id="displayName" name="display_name" class="form-input" placeholder="请输入显示名称" required>
                 </div>
-
                 <div class="form-group">
                     <label for="password" class="form-label">密码</label>
-                    <div class="password-toggle">
-                        <input 
-                            type="password" 
-                            id="password" 
-                            name="password" 
-                            class="form-input" 
-                            placeholder="请输入密码"
-                            required
-                            autocomplete="new-password"
-                        >
-                        <button type="button" class="password-toggle-btn" onclick="togglePassword('password')">
-                            👁️
-                        </button>
+                    <div class="password-toggle" style="position:relative">
+                        <input type="password" id="password" name="password" class="form-input" placeholder="请输入密码" required autocomplete="new-password" style="padding-right:42px">
+                        <button type="button" class="password-toggle-btn" onclick="togglePassword('password')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-3);cursor:pointer"><i class="fas fa-eye"></i></button>
                     </div>
-                    <div id="passwordStrength" class="password-strength" style="display: none;"></div>
-                    <div id="passwordRequirements" class="password-requirements" style="display: none;">
+                    <div id="passwordStrength" class="password-strength" style="display:none"></div>
+                    <div id="passwordRequirements" class="password-requirements" style="display:none">
                         <ul>
                             <li id="req-length">至少8个字符</li>
                             <li id="req-upper">包含大写字母</li>
@@ -251,40 +56,26 @@
                         </ul>
                     </div>
                 </div>
-
                 <div class="form-group">
                     <label for="confirmPassword" class="form-label">确认密码</label>
-                    <div class="password-toggle">
-                        <input 
-                            type="password" 
-                            id="confirmPassword" 
-                            name="confirm_password" 
-                            class="form-input" 
-                            placeholder="请再次输入密码"
-                            required
-                            autocomplete="new-password"
-                        >
-                        <button type="button" class="password-toggle-btn" onclick="togglePassword('confirmPassword')">
-                            👁️
-                        </button>
+                    <div class="password-toggle" style="position:relative">
+                        <input type="password" id="confirmPassword" name="confirm_password" class="form-input" placeholder="请再次输入密码" required autocomplete="new-password" style="padding-right:42px">
+                        <button type="button" class="password-toggle-btn" onclick="togglePassword('confirmPassword')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-3);cursor:pointer"><i class="fas fa-eye"></i></button>
                     </div>
                 </div>
 
-                <div class="register-actions">
-                    <button type="submit" class="btn btn-primary btn-register" id="registerBtn">
-                        <span class="btn-text">创建账户</span>
-                        <span class="loading hidden">注册中...</span>
-                    </button>
-                </div>
+                <button type="submit" class="btn btn-primary btn-lg btn-block" id="registerBtn">
+                    <span class="btn-text">创建账户</span>
+                    <span class="loading hidden"></span>
+                </button>
             </form>
 
-            <div class="register-footer">
-                <p>已有账户？ <a href="/login" class="register-link">立即登录</a></p>
-            </div>
+            <p class="text-center text-secondary mt-xl" style="font-size:.9rem">
+                已有账户？ <a href="/login">立即登录</a>
+            </p>
         </div>
     </div>
 
-    <!-- JavaScript -->
     <script src="../js/utils.js"></script>
     <script src="../js/api.js"></script>
     <script>
@@ -293,24 +84,13 @@
                 this.form = document.getElementById('registerForm');
                 this.registerBtn = document.getElementById('registerBtn');
                 this.validator = new utils.FormValidator(this.form);
-                
                 this.init();
             }
-
             init() {
-                // 检查是否已登录
-                if (window.apiClient.isAuthenticated()) {
-                    window.location.href = '/dashboard';
-                    return;
-                }
-
-                // 设置验证规则
+                if (window.apiClient.isAuthenticated()) { window.location.href = '/dashboard'; return; }
                 this.setupValidation();
-                
-                // 绑定事件
                 this.bindEvents();
             }
-
             setupValidation() {
                 this.validator
                     .addRule('username', utils.ValidationRules.required('请输入用户名'))
@@ -326,114 +106,35 @@
                     .addRule('confirm_password', utils.ValidationRules.required('请确认密码'))
                     .addRule('confirm_password', utils.ValidationRules.confirmPassword('password'));
             }
-
             bindEvents() {
                 this.form.addEventListener('submit', (e) => this.handleSubmit(e));
-                
-                // 密码强度检查
-                document.getElementById('password').addEventListener('input', (e) => {
-                    this.checkPasswordStrength(e.target.value);
-                });
-
-                // 用户名实时验证
-                document.getElementById('username').addEventListener('input', 
-                    utils.debounce((e) => this.checkUsername(e.target.value), 500)
-                );
-
-                // 邮箱实时验证
-                document.getElementById('email').addEventListener('input',
-                    utils.debounce((e) => this.checkEmail(e.target.value), 500)
-                );
+                document.getElementById('password').addEventListener('input', (e) => this.checkPasswordStrength(e.target.value));
             }
-
             checkPasswordStrength(password) {
                 const strengthDiv = document.getElementById('passwordStrength');
-                const requirementsDiv = document.getElementById('passwordRequirements');
-                
-                if (!password) {
-                    strengthDiv.style.display = 'none';
-                    requirementsDiv.style.display = 'none';
-                    return;
-                }
-
-                strengthDiv.style.display = 'block';
-                requirementsDiv.style.display = 'block';
-
+                const reqDiv = document.getElementById('passwordRequirements');
+                if (!password) { strengthDiv.style.display = 'none'; reqDiv.style.display = 'none'; return; }
+                strengthDiv.style.display = 'block'; reqDiv.style.display = 'block';
                 const result = utils.validatePassword(password);
-                
-                // 更新强度显示
                 strengthDiv.className = `password-strength ${result.strength}`;
-                const strengthTexts = {
-                    weak: '密码强度：弱',
-                    medium: '密码强度：中等',
-                    strong: '密码强度：强'
-                };
-                strengthDiv.textContent = strengthTexts[result.strength];
-
-                // 更新要求检查
-                const requirements = result.requirements;
-                document.getElementById('req-length').className = requirements.minLength ? 'valid' : '';
-                document.getElementById('req-upper').className = requirements.hasUpperCase ? 'valid' : '';
-                document.getElementById('req-lower').className = requirements.hasLowerCase ? 'valid' : '';
-                document.getElementById('req-number').className = requirements.hasNumbers ? 'valid' : '';
-                document.getElementById('req-special').className = requirements.hasSpecialChar ? 'valid' : '';
+                strengthDiv.textContent = { weak: '密码强度：弱', medium: '密码强度：中等', strong: '密码强度：强' }[result.strength];
+                const r = result.requirements;
+                document.getElementById('req-length').className = r.minLength ? 'valid' : '';
+                document.getElementById('req-upper').className = r.hasUpperCase ? 'valid' : '';
+                document.getElementById('req-lower').className = r.hasLowerCase ? 'valid' : '';
+                document.getElementById('req-number').className = r.hasNumbers ? 'valid' : '';
+                document.getElementById('req-special').className = r.hasSpecialChar ? 'valid' : '';
             }
-
-            async checkUsername(username) {
-                if (username.length < 3) return;
-                
-                try {
-                    // 这里可以添加检查用户名是否已存在的API调用
-                    // const exists = await window.apiClient.checkUsername(username);
-                    // if (exists) {
-                    //     // 显示用户名已存在的提示
-                    // }
-                } catch (error) {
-                    console.log('检查用户名时出错:', error);
-                }
-            }
-
-            async checkEmail(email) {
-                if (!utils.validateEmail(email)) return;
-                
-                try {
-                    // 这里可以添加检查邮箱是否已存在的API调用
-                    // const exists = await window.apiClient.checkEmail(email);
-                    // if (exists) {
-                    //     // 显示邮箱已存在的提示
-                    // }
-                } catch (error) {
-                    console.log('检查邮箱时出错:', error);
-                }
-            }
-
             async handleSubmit(e) {
                 e.preventDefault();
-                
-                // 验证表单
-                if (!this.validator.validate()) {
-                    return;
-                }
-
+                if (!this.validator.validate()) return;
                 const formData = this.validator.getData();
-                
-                // 移除确认密码字段（服务器不需要）
                 delete formData.confirm_password;
-                
                 try {
                     this.setLoading(true);
-                    
-                    // 调用注册API
-                    const response = await window.apiClient.register(formData);
-                    
-                    // 显示成功消息
+                    await window.apiClient.register(formData);
                     window.notifications.success('注册成功！请登录您的账户');
-                    
-                    // 跳转到登录页面
-                    setTimeout(() => {
-                        window.location.href = '/login';
-                    }, 1500);
-                    
+                    setTimeout(() => { window.location.href = '/login'; }, 1200);
                 } catch (error) {
                     console.error('注册失败:', error);
                     window.notifications.error(error.message || '注册失败，请稍后重试');
@@ -441,41 +142,20 @@
                     this.setLoading(false);
                 }
             }
-
             setLoading(loading) {
-                const btnText = this.registerBtn.querySelector('.btn-text');
-                const btnLoading = this.registerBtn.querySelector('.loading');
-                
-                if (loading) {
-                    btnText.classList.add('hidden');
-                    btnLoading.classList.remove('hidden');
-                    this.registerBtn.disabled = true;
-                } else {
-                    btnText.classList.remove('hidden');
-                    btnLoading.classList.add('hidden');
-                    this.registerBtn.disabled = false;
-                }
+                this.registerBtn.querySelector('.btn-text').classList.toggle('hidden', loading);
+                this.registerBtn.querySelector('.loading').classList.toggle('hidden', !loading);
+                this.registerBtn.disabled = loading;
             }
         }
-
-        // 密码显示/隐藏切换
         function togglePassword(fieldId) {
-            const passwordInput = document.getElementById(fieldId);
-            const toggleBtn = passwordInput.parentNode.querySelector('.password-toggle-btn');
-            
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                toggleBtn.textContent = '🙈';
-            } else {
-                passwordInput.type = 'password';
-                toggleBtn.textContent = '👁️';
-            }
+            const input = document.getElementById(fieldId);
+            const icon = input.parentNode.querySelector('.password-toggle-btn i');
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            icon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
         }
-
-        // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', () => {
-            new RegisterPage();
-        });
+        document.addEventListener('DOMContentLoaded', () => new RegisterPage());
     </script>
 </body>
 </html>
