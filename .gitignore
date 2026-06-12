@@ -1,0 +1,36 @@
+# ===== 敏感配置（务必忽略，切勿提交）=====
+.env
+.env.*
+!.env.example
+*token*.json
+token_store/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# ===== 日志与运行时 =====
+logs/
+*.log
+
+# ===== 依赖与构建产物 =====
+node_modules/
+dist/
+build/
+
+# ===== 归档/备份（由 Git 接管版本，无需保留）=====
+*.zip
+归档.zip
+
+# ===== 操作系统 / 编辑器 =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

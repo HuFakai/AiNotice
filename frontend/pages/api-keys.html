@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API密钥管理 - 爱通知</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
+    <link rel="stylesheet" href="../css/main.css">
+    <style>
+        .api-keys-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .api-keys-table {
+            background: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: var(--shadow-md);
+        }
+
+        .api-key-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 150px;
+            gap: var(--spacing-md);
+            padding: var(--spacing-lg);
+            border-bottom: 1px solid var(--gray-200);
+            align-items: center;
+        }
+
+        .api-key-row.header {
+            background: var(--gray-50);
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .api-key-info {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-xs);
+        }
+
+        .api-key-name {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .api-key-value {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: var(--gray-100);
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            display: inline-block;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .api-key-permissions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--spacing-xs);
+        }
+
+        .permission-badge {
+            background: var(--primary-color);
+            color: white;
+            font-size: 0.625rem;
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+        }
+
+        .api-key-usage {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-xs);
+        }
+
+        .usage-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--gray-200);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .usage-progress {
+            height: 100%;
+            background: var(--primary-color);
+            transition: width var(--transition-normal);
+        }
+
+        .usage-text {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .api-key-actions {
+            display: flex;
+            gap: var(--spacing-sm);
+        }
+
+        .create-key-modal .modal {
+            max-width: 600px;
+        }
+
+        .permissions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+            margin: var(--spacing-lg) 0;
+        }
+
+        .permission-item {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-md);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md);
+            transition: all var(--transition-fast);
+        }
+
+        .permission-item:hover {
+            border-color: var(--primary-color);
+            background: var(--gray-50);
+        }
+
+        .permission-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary-color);
+        }
+
+        .permission-info {
+            flex: 1;
+        }
+
+        .permission-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .permission-desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .key-display-modal .api-key-display {
+            background: var(--gray-100);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-md);
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+            word-break: break-all;
+            border: 2px dashed var(--primary-color);
+        }
+
+        .copy-button {
+            margin-top: var(--spacing-md);
+            width: 100%;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: var(--spacing-2xl);
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        @media (max-width: 768px) {
+            .api-key-row {
+                grid-template-columns: 1fr;
+                gap: var(--spacing-sm);
+                text-align: left;
+            }
+            
+            .api-key-row.header {
+                display: none;
+            }
+            
+            .api-keys-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-content">
+                <a href="/dashboard" class="navbar-brand">
+                    <img src="/assets/logo.svg" alt="爱通知" width="24" height="24" style="margin-right: 8px; vertical-align: middle;">
+                    爱通知
+                </a>
+                
+                <ul class="navbar-nav">
+                    <li><a href="/dashboard" class="navbar-link">控制台</a></li>
+                    <li><a href="/api-keys" class="navbar-link active">API密钥</a></li>
+                    <li><a href="/devices" class="navbar-link">设备管理</a></li>
+                    <li><a href="/mi-accounts" class="navbar-link">小米账户</a></li>
+                    <li><a href="/analytics" class="navbar-link">API统计</a></li>
+                    <li><a href="/docs-page" class="navbar-link">开发文档</a></li>
+                    <li><a href="/profile" class="navbar-link">个人资料</a></li>
+                </ul>
+                
+                <div class="navbar-user">
+                    <span id="userDisplayName" class="navbar-link">加载中...</span>
+                    <button class="btn btn-sm btn-outline" onclick="logout()">退出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容 -->
+    <div class="container">
+        <div class="content-wrapper">
+            <!-- 页面头部 -->
+            <div class="page-header">
+                <h1 class="page-title">API密钥管理</h1>
+                <p class="page-description">创建和管理您的API访问密钥，控制访问权限和使用限制</p>
+            </div>
+
+            <!-- 操作头部 -->
+            <div class="api-keys-header">
+                <div class="flex items-center gap-md">
+                    <span class="text-secondary">共 <span id="totalKeys">0</span> 个密钥</span>
+                </div>
+                <div class="flex gap-sm">
+                    <button class="btn btn-outline" onclick="refreshApiKeys()">
+                        🔄 刷新
+                    </button>
+                    <button class="btn btn-primary" onclick="openCreateModal()">
+                        ➕ 创建密钥
+                    </button>
+                </div>
+            </div>
+
+            <!-- API密钥列表 -->
+            <div class="api-keys-table">
+                <div class="api-key-row header">
+                    <div>密钥信息</div>
+                    <div>权限</div>
+                    <div>使用情况</div>
+                    <div>状态</div>
+                    <div>操作</div>
+                </div>
+                <div id="apiKeysList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔄</div>
+                        <p>正在加载API密钥...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建密钥模态框 -->
+    <div id="createKeyModal" class="modal-overlay create-key-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">创建API密钥</h3>
+            </div>
+            <div class="modal-body">
+                <form id="createKeyForm">
+                    <div class="form-group">
+                        <label for="keyName" class="form-label">密钥名称</label>
+                        <input 
+                            type="text" 
+                            id="keyName" 
+                            name="key_name" 
+                            class="form-input" 
+                            placeholder="请输入密钥名称"
+                            required
+                        >
+                        <div class="form-help">为此密钥提供一个易于识别的名称</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">权限设置</label>
+                        <div class="permissions-grid" id="permissionsGrid">
+                            <!-- 权限项将由JavaScript动态生成 -->
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="usageLimit" class="form-label">使用限制</label>
+                        <input 
+                            type="number" 
+                            id="usageLimit" 
+                            name="usage_limit" 
+                            class="form-input" 
+                            placeholder="请输入使用次数限制（可选）"
+                            min="1"
+                        >
+                        <div class="form-help">留空表示无限制</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expiresInDays" class="form-label">有效期（天）</label>
+                        <input 
+                            type="number" 
+                            id="expiresInDays" 
+                            name="expires_in_days" 
+                            class="form-input" 
+                            placeholder="请输入有效天数（可选）"
+                            min="1"
+                            max="365"
+                        >
+                        <div class="form-help">留空表示永不过期</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('createKeyModal')">取消</button>
+                <button type="button" class="btn btn-primary" onclick="createApiKey()" id="createKeyBtn">
+                    <span class="btn-text">创建密钥</span>
+                    <span class="loading hidden">创建中...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 显示密钥模态框 -->
+    <div id="keyDisplayModal" class="modal-overlay key-display-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">API密钥创建成功</h3>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>重要提示：</strong>此密钥只会显示一次，请妥善保存！
+                </div>
+                <div class="form-group">
+                    <label class="form-label">您的API密钥：</label>
+                    <div id="apiKeyDisplay" class="api-key-display">
+                        <!-- 密钥将在这里显示 -->
+                    </div>
+                    <button class="btn btn-primary copy-button" onclick="copyDisplayedKey()">
+                        📋 复制密钥
+                    </button>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">使用示例：</label>
+                    <pre class="api-key-display" style="font-size: 0.75rem;">curl -H "Authorization: Bearer &lt;your-api-key&gt;" \
+  http://localhost:8000/api/v1/devices</pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" onclick="closeModal('keyDisplayModal')">我已保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="../js/utils.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script>
+        class ApiKeysPage {
+            constructor() {
+                this.apiKeys = [];
+                this.permissions = {
+                    speak: { name: '语音播放', desc: '允许调用语音播放API' },
+                    get_devices: { name: '获取设备', desc: '允许获取设备列表' },
+                    manage_devices: { name: '管理设备', desc: '允许管理设备设置' },
+                    stop_speak: { name: '停止播放', desc: '允许停止语音播放' },
+                    set_volume: { name: '设置音量', desc: '允许调整设备音量' },
+                    get_status: { name: '获取状态', desc: '允许获取设备状态' }
+                };
+                
+                this.init();
+            }
+
+            async init() {
+                // 检查登录状态
+                if (!window.apiClient.isAuthenticated()) {
+                window.location.href = '/login';
+                return;
+            }
+
+                try {
+                    // 获取当前用户信息
+                    const currentUser = window.apiClient.getCurrentUser();
+                    if (currentUser) {
+                        document.getElementById('userDisplayName').textContent = 
+                            currentUser.display_name || currentUser.username;
+                    }
+                    
+                    // 初始化权限网格
+                    this.initPermissionsGrid();
+                    
+                    // 加载API密钥
+                    await this.loadApiKeys();
+                    
+                    // 检查URL参数，如果有create参数则打开创建模态框
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('action') === 'create') {
+                        this.openCreateModal();
+                    }
+                    
+                } catch (error) {
+                    console.error('初始化API密钥页面失败:', error);
+                    window.notifications.error('加载页面失败：' + error.message);
+                }
+            }
+
+            initPermissionsGrid() {
+                const grid = document.getElementById('permissionsGrid');
+                grid.innerHTML = Object.entries(this.permissions).map(([key, perm]) => `
+                    <div class="permission-item">
+                        <input type="checkbox" id="perm_${key}" value="${key}" checked>
+                        <div class="permission-info">
+                            <div class="permission-name">${perm.name}</div>
+                            <div class="permission-desc">${perm.desc}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            async loadApiKeys() {
+                try {
+                    window.loadingManager.show();
+                    this.apiKeys = await window.apiClient.getApiKeys();
+                    this.renderApiKeys();
+                    document.getElementById('totalKeys').textContent = this.apiKeys.length;
+                } catch (error) {
+                    console.error('加载API密钥失败:', error);
+                    window.notifications.error('加载API密钥失败：' + error.message);
+                    this.renderEmptyState('加载失败');
+                } finally {
+                    window.loadingManager.hide();
+                }
+            }
+
+            renderApiKeys() {
+                const container = document.getElementById('apiKeysList');
+                
+                if (this.apiKeys.length === 0) {
+                    this.renderEmptyState();
+                    return;
+                }
+
+                container.innerHTML = this.apiKeys.map(key => this.renderApiKeyRow(key)).join('');
+            }
+
+            renderApiKeyRow(key) {
+                const permissions = Object.entries(key.permissions || {})
+                    .filter(([_, enabled]) => enabled)
+                    .map(([perm]) => this.permissions[perm]?.name || perm);
+
+                const usagePercent = key.usage_limit ? 
+                    Math.min((key.usage_count || 0) / key.usage_limit * 100, 100) : 0;
+
+                return `
+                    <div class="api-key-row">
+                        <div class="api-key-info">
+                            <div class="api-key-name">${key.key_name}</div>
+                            <div class="api-key-value" onclick="copyApiKey('${key.api_key}')" title="点击复制">
+                                ${key.api_key}
+                            </div>
+                            <div class="text-secondary" style="font-size: 0.75rem;">
+                                创建于 ${utils.formatDateTime(key.created_at)}
+                            </div>
+                        </div>
+                        
+                        <div class="api-key-permissions">
+                            ${permissions.slice(0, 3).map(perm => 
+                                `<span class="permission-badge">${perm}</span>`
+                            ).join('')}
+                            ${permissions.length > 3 ? 
+                                `<span class="permission-badge">+${permissions.length - 3}</span>` : ''
+                            }
+                        </div>
+                        
+                        <div class="api-key-usage">
+                            ${key.usage_limit ? `
+                                <div class="usage-bar">
+                                    <div class="usage-progress" style="width: ${usagePercent}%"></div>
+                                </div>
+                                <div class="usage-text">
+                                    ${key.usage_count || 0} / ${key.usage_limit}
+                                </div>
+                            ` : `
+                                <div class="usage-text">无限制</div>
+                            `}
+                        </div>
+                        
+                        <div>
+                            ${utils.getStatusBadge(
+                                key.is_valid ? 'active' : 'inactive',
+                                key.is_valid ? '有效' : '无效'
+                            )}
+                            ${key.expires_at ? `
+                                <div class="text-secondary" style="font-size: 0.75rem; margin-top: 4px;">
+                                    过期于 ${utils.formatDateTime(key.expires_at)}
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        <div class="api-key-actions">
+                            <button class="btn btn-sm btn-outline" onclick="copyApiKey('${key.api_key}')" title="复制密钥">
+                                📋
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteApiKey(${key.id}, '${key.key_name}')" title="删除密钥">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderEmptyState(message = '暂无API密钥') {
+                document.getElementById('apiKeysList').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔑</div>
+                        <p>${message}</p>
+                        ${message === '暂无API密钥' ? `
+                            <button class="btn btn-primary mt-lg" onclick="openCreateModal()">
+                                创建第一个API密钥
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            openCreateModal() {
+                document.getElementById('createKeyModal').classList.add('active');
+                document.getElementById('keyName').focus();
+            }
+
+            async createApiKey() {
+                const form = document.getElementById('createKeyForm');
+                const formData = new FormData(form);
+                const createBtn = document.getElementById('createKeyBtn');
+                
+                try {
+                    // 验证表单
+                    const keyName = formData.get('key_name').trim();
+                    if (!keyName) {
+                        window.notifications.error('请输入密钥名称');
+                        return;
+                    }
+
+                    // 获取权限设置
+                    const permissions = {};
+                    document.querySelectorAll('#permissionsGrid input[type="checkbox"]').forEach(input => {
+                        permissions[input.value] = input.checked;
+                    });
+
+                    // 检查是否至少选择了一个权限
+                    if (!Object.values(permissions).some(enabled => enabled)) {
+                        window.notifications.error('请至少选择一个权限');
+                        return;
+                    }
+
+                    // 构建请求数据
+                    const keyData = {
+                        key_name: keyName,
+                        permissions: permissions
+                    };
+
+                    const usageLimit = formData.get('usage_limit');
+                    if (usageLimit) {
+                        keyData.usage_limit = parseInt(usageLimit);
+                    }
+
+                    const expiresInDays = formData.get('expires_in_days');
+                    if (expiresInDays) {
+                        keyData.expires_in_days = parseInt(expiresInDays);
+                    }
+
+                    // 设置加载状态
+                    this.setButtonLoading(createBtn, true);
+
+                    // 调用API创建密钥
+                    const response = await window.apiClient.createApiKey(keyData);
+
+                    // 关闭创建模态框
+                    this.closeModal('createKeyModal');
+
+                    // 显示密钥
+                    this.showCreatedKey(response);
+
+                    // 重新加载密钥列表
+                    await this.loadApiKeys();
+
+                    // 重置表单
+                    form.reset();
+                    this.initPermissionsGrid();
+
+                    window.notifications.success('API密钥创建成功');
+
+                } catch (error) {
+                    console.error('创建API密钥失败:', error);
+                    window.notifications.error('创建失败：' + error.message);
+                } finally {
+                    this.setButtonLoading(createBtn, false);
+                }
+            }
+
+            showCreatedKey(keyData) {
+                document.getElementById('apiKeyDisplay').textContent = keyData.api_key;
+                document.getElementById('keyDisplayModal').classList.add('active');
+            }
+
+            async deleteApiKey(keyId, keyName) {
+                window.modalManager.confirm(
+                    '删除API密钥',
+                    `确定要删除密钥 "${keyName}" 吗？此操作不可恢复。`,
+                    async () => {
+                        try {
+                            await window.apiClient.deleteApiKey(keyId);
+                            window.notifications.success('API密钥已删除');
+                            await this.loadApiKeys();
+                        } catch (error) {
+                            console.error('删除API密钥失败:', error);
+                            window.notifications.error('删除失败：' + error.message);
+                        }
+                    }
+                );
+            }
+
+            setButtonLoading(button, loading) {
+                const btnText = button.querySelector('.btn-text');
+                const btnLoading = button.querySelector('.loading');
+                
+                if (loading) {
+                    btnText.classList.add('hidden');
+                    btnLoading.classList.remove('hidden');
+                    button.disabled = true;
+                } else {
+                    btnText.classList.remove('hidden');
+                    btnLoading.classList.add('hidden');
+                    button.disabled = false;
+                }
+            }
+
+            closeModal(modalId) {
+                document.getElementById(modalId).classList.remove('active');
+            }
+        }
+
+        // 全局函数
+        async function logout() {
+            try {
+                await window.apiClient.logout();
+                window.notifications.success('已退出登录');
+                window.location.href = '/login';
+            } catch (error) {
+                console.error('退出登录失败:', error);
+                window.apiClient.setToken(null);
+                window.apiClient.setCurrentUser(null);
+                window.location.href = '/login';
+            }
+        }
+
+        async function copyApiKey(apiKey) {
+            await utils.copyToClipboard(apiKey);
+        }
+
+        function copyDisplayedKey() {
+            const keyDisplay = document.getElementById('apiKeyDisplay');
+            utils.copyToClipboard(keyDisplay.textContent);
+        }
+
+        function openCreateModal() {
+            if (window.apiKeysPage) {
+                window.apiKeysPage.openCreateModal();
+            }
+        }
+
+        function closeModal(modalId) {
+            if (window.apiKeysPage) {
+                window.apiKeysPage.closeModal(modalId);
+            }
+        }
+
+        async function createApiKey() {
+            if (window.apiKeysPage) {
+                await window.apiKeysPage.createApiKey();
+            }
+        }
+
+        async function deleteApiKey(keyId, keyName) {
+            if (window.apiKeysPage) {
+                await window.apiKeysPage.deleteApiKey(keyId, keyName);
+            }
+        }
+
+        async function refreshApiKeys() {
+            if (window.apiKeysPage) {
+                await window.apiKeysPage.loadApiKeys();
+                window.notifications.success('API密钥列表已刷新');
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            window.apiKeysPage = new ApiKeysPage();
+        });
+    </script>
+</body>
+</html>

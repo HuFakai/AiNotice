@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设备管理 - 爱通知</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
+    <link rel="stylesheet" href="../css/main.css">
+    <style>
+        .devices-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .devices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: var(--spacing-lg);
+        }
+
+        .device-card {
+            background: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            box-shadow: var(--shadow-md);
+            transition: all var(--transition-fast);
+            border: 2px solid transparent;
+        }
+
+        .device-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .device-card.selected {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .device-header {
+            display: flex;
+            align-items: center;
+            justify-content: between;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .device-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: var(--radius-lg);
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: white;
+            margin-right: var(--spacing-md);
+        }
+
+        .device-info {
+            flex: 1;
+        }
+
+        .device-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .device-model {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .device-status {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            font-size: 0.75rem;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--secondary-color);
+        }
+
+        .status-indicator.offline {
+            background: var(--gray-400);
+        }
+
+        .device-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--spacing-md);
+            margin: var(--spacing-lg) 0;
+            padding: var(--spacing-md);
+            background: var(--gray-50);
+            border-radius: var(--radius-md);
+        }
+
+        .device-detail {
+            text-align: center;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .detail-value {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .device-actions {
+            display: flex;
+            gap: var(--spacing-sm);
+            margin-top: var(--spacing-lg);
+        }
+
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin: var(--spacing-md) 0;
+        }
+
+        .volume-slider {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--gray-200);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .volume-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+            border: none;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .speak-form {
+            margin-top: var(--spacing-lg);
+            padding: var(--spacing-lg);
+            background: var(--gray-50);
+            border-radius: var(--radius-md);
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: var(--spacing-sm);
+            margin-top: var(--spacing-md);
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-lg);
+            overflow-x: auto;
+        }
+
+        .filter-tab {
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid var(--gray-300);
+            border-radius: var(--radius-md);
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            white-space: nowrap;
+        }
+
+        .filter-tab.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: var(--spacing-2xl);
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .batch-actions {
+            position: fixed;
+            bottom: var(--spacing-xl);
+            right: var(--spacing-xl);
+            background: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xl);
+            padding: var(--spacing-md);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all var(--transition-normal);
+        }
+
+        .batch-actions.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            .devices-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .devices-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .device-details {
+                grid-template-columns: 1fr;
+            }
+            
+            .batch-actions {
+                right: var(--spacing-md);
+                left: var(--spacing-md);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-content">
+                <a href="/dashboard" class="navbar-brand">
+                    <img src="/assets/logo.svg" alt="爱通知" width="24" height="24" style="margin-right: 8px; vertical-align: middle;">
+                    爱通知
+                </a>
+                
+                <ul class="navbar-nav">
+                    <li><a href="/dashboard" class="navbar-link">控制台</a></li>
+                    <li><a href="/api-keys" class="navbar-link">API密钥</a></li>
+                    <li><a href="/devices" class="navbar-link active">设备管理</a></li>
+                    <li><a href="/mi-accounts" class="navbar-link">小米账户</a></li>
+                    <li><a href="/analytics" class="navbar-link">API统计</a></li>
+                    <li><a href="/docs-page" class="navbar-link">开发文档</a></li>
+                    <li><a href="/profile" class="navbar-link">个人资料</a></li>
+                </ul>
+                
+                <div class="navbar-user">
+                    <span id="userDisplayName" class="navbar-link">加载中...</span>
+                    <button class="btn btn-sm btn-outline" onclick="logout()">退出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容 -->
+    <div class="container">
+        <div class="content-wrapper">
+            <!-- 页面头部 -->
+            <div class="page-header">
+                <h1 class="page-title">设备管理</h1>
+                <p class="page-description">管理您的小爱音箱设备，控制播放和设置</p>
+            </div>
+
+            <!-- 操作头部 -->
+            <div class="devices-header">
+                <div class="flex items-center gap-md">
+                    <span class="text-secondary">共 <span id="totalDevices">0</span> 个设备</span>
+                    <span id="selectedCount" class="text-primary hidden">已选择 0 个设备</span>
+                </div>
+                <div class="flex gap-sm">
+                    <button class="btn btn-outline" onclick="refreshDevices()">
+                        🔄 刷新设备
+                    </button>
+                    <button class="btn btn-outline" onclick="testAllDevices()" id="testAllBtn">
+                        🎤 测试音箱设备
+                    </button>
+                </div>
+            </div>
+
+            <!-- 筛选标签 -->
+            <div class="filter-tabs">
+                <div class="filter-tab active" data-filter="all">全部设备</div>
+                <div class="filter-tab" data-filter="online">在线设备</div>
+                <div class="filter-tab" data-filter="offline">离线设备</div>
+                <div class="filter-tab" data-filter="selected">已选择</div>
+            </div>
+
+            <!-- 设备网格 -->
+            <div id="devicesGrid" class="devices-grid">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔄</div>
+                    <p>正在加载设备...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批量操作 -->
+    <div id="batchActions" class="batch-actions">
+        <div class="flex gap-sm">
+            <button class="btn btn-sm btn-primary" onclick="speakToSelected()">
+                🎤 批量播放
+            </button>
+            <button class="btn btn-sm btn-warning" onclick="stopSelected()">
+                ⏹️ 停止播放
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="clearSelection()">
+                ❌ 取消选择
+            </button>
+        </div>
+    </div>
+
+    <!-- 语音播放模态框 -->
+    <div id="speakModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">语音播放</h3>
+            </div>
+            <div class="modal-body">
+                <form id="speakForm">
+                    <div class="form-group">
+                        <label for="speakText" class="form-label">播放内容</label>
+                        <textarea 
+                            id="speakText" 
+                            name="text" 
+                            class="form-textarea" 
+                            rows="3"
+                            placeholder="请输入要播放的文字内容..."
+                            required
+                        ></textarea>
+                        <div class="form-help">最多支持200个字符</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">目标设备</label>
+                        <div id="targetDevices" class="text-secondary">
+                            <!-- 目标设备将在这里显示 -->
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('speakModal')">取消</button>
+                <button type="button" class="btn btn-primary" onclick="executeSpeak()" id="speakBtn">
+                    <span class="btn-text">🎤 开始播放</span>
+                    <span class="loading hidden">播放中...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设备详情模态框 -->
+    <div id="deviceDetailModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="deviceDetailTitle">设备详情</h3>
+            </div>
+            <div class="modal-body">
+                <div id="deviceDetailContent">
+                    <!-- 设备详情内容将在这里显示 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('deviceDetailModal')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="../js/utils.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script>
+        class DevicesPage {
+            constructor() {
+                this.devices = [];
+                this.selectedDevices = new Set();
+                this.currentFilter = 'all';
+                
+                this.init();
+            }
+
+            async init() {
+                // 检查登录状态
+                if (!window.apiClient.isAuthenticated()) {
+                window.location.href = '/login';
+                return;
+            }
+
+                try {
+                    // 获取当前用户信息
+                    const currentUser = window.apiClient.getCurrentUser();
+                    if (currentUser) {
+                        document.getElementById('userDisplayName').textContent = 
+                            currentUser.display_name || currentUser.username;
+                    }
+                    
+                    // 绑定事件
+                    this.bindEvents();
+                    
+                    // 加载设备
+                    await this.loadDevices();
+                    
+                    // 检查URL参数，如果有device参数则选中特定设备
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const deviceId = urlParams.get('device');
+                    if (deviceId) {
+                        this.selectDevice(deviceId);
+                    }
+                    
+                } catch (error) {
+                    console.error('初始化设备页面失败:', error);
+                    window.notifications.error('加载页面失败：' + error.message);
+                }
+            }
+
+            bindEvents() {
+                // 筛选标签事件
+                document.querySelectorAll('.filter-tab').forEach(tab => {
+                    tab.addEventListener('click', (e) => {
+                        const filter = e.target.getAttribute('data-filter');
+                        this.setFilter(filter);
+                    });
+                });
+
+                // 语音播放表单字符计数
+                const speakText = document.getElementById('speakText');
+                speakText.addEventListener('input', (e) => {
+                    const length = e.target.value.length;
+                    const help = e.target.parentNode.querySelector('.form-help');
+                    help.textContent = `${length}/200 字符`;
+                    if (length > 200) {
+                        help.style.color = 'var(--error-color)';
+                        e.target.value = e.target.value.substring(0, 200);
+                    } else {
+                        help.style.color = 'var(--text-secondary)';
+                    }
+                });
+            }
+
+            async loadDevices() {
+                try {
+                    window.loadingManager.show();
+                    this.devices = await window.apiClient.getDevices();
+                    
+                    // 确保devices是数组
+                    if (!Array.isArray(this.devices)) {
+                        this.devices = [];
+                    }
+                    
+                    this.renderDevices();
+                    // 只统计音箱设备数量
+                    const speakerDevices = this.devices.filter(device => {
+                        const model = device.model || device.type || '';
+                        return model.toLowerCase().includes('wifispeaker');
+                    });
+                    document.getElementById('totalDevices').textContent = speakerDevices.length;
+                } catch (error) {
+                    console.error('加载设备失败:', error);
+                    window.notifications.error('加载设备失败：' + error.message);
+                    this.renderEmptyState('加载失败');
+                } finally {
+                    window.loadingManager.hide();
+                }
+            }
+
+            renderDevices() {
+                const container = document.getElementById('devicesGrid');
+                
+                if (this.devices.length === 0) {
+                    this.renderEmptyState();
+                    return;
+                }
+
+                const filteredDevices = this.filterDevices();
+                
+                if (filteredDevices.length === 0) {
+                    this.renderEmptyState('没有符合条件的设备');
+                    return;
+                }
+
+                container.innerHTML = filteredDevices.map(device => this.renderDeviceCard(device)).join('');
+            }
+
+            filterDevices() {
+                // 首先过滤出音箱设备（wifispeaker）
+                const speakerDevices = this.devices.filter(device => {
+                    const model = device.model || device.type || '';
+                    return model.toLowerCase().includes('wifispeaker');
+                });
+                
+                switch (this.currentFilter) {
+                    case 'online':
+                        return speakerDevices.filter(device => device.status === 'online');
+                    case 'offline':
+                        return speakerDevices.filter(device => device.status === 'offline');
+                    case 'selected':
+                        return speakerDevices.filter(device => this.selectedDevices.has(device.did || device.device_id));
+                    default:
+                        return speakerDevices;
+                }
+            }
+
+            renderDeviceCard(device) {
+                const deviceId = device.did || device.device_id || '';
+                const deviceName = device.name || '未知设备';
+                const deviceModel = device.model || device.type || '未知型号';
+                const isOnline = device.status !== 'offline';
+                const isSelected = this.selectedDevices.has(deviceId);
+
+                return `
+                    <div class="device-card ${isSelected ? 'selected' : ''}" data-device-id="${deviceId}">
+                        <div class="device-header">
+                            <div class="device-icon">🎤</div>
+                            <div class="device-info">
+                                <div class="device-name">${deviceName}</div>
+                                <div class="device-model">${deviceModel}</div>
+                                <div class="device-status">
+                                    <div class="status-indicator ${isOnline ? '' : 'offline'}"></div>
+                                    <span>${isOnline ? '在线' : '离线'}</span>
+                                </div>
+                            </div>
+                            <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleDeviceSelection('${deviceId}')">
+                        </div>
+                        
+                        <div class="device-details">
+                            <div class="device-detail">
+                                <div class="detail-label">设备ID/device_id</div>
+                                <div class="detail-value" onclick="copyDeviceId('${deviceId}')" title="点击复制" style="text-align: center; word-break: break-all; padding: 8px;">
+                                    ${deviceId}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="volume-control">
+                            <span style="font-size: 0.75rem;">🔊</span>
+                            <input type="range" 
+                                   class="volume-slider" 
+                                   min="0" 
+                                   max="100" 
+                                   value="${device.volume || 50}"
+                                   oninput="this.nextElementSibling.textContent = this.value + '%'"
+                                   onchange="setDeviceVolume('${deviceId}', this.value)">
+                            <span style="font-size: 0.75rem;">${device.volume || 50}%</span>
+                        </div>
+                        
+                        <div class="device-actions">
+                            <button class="btn btn-sm btn-primary" onclick="speakToDevice('${deviceId}', '${deviceName}')">
+                                🎤 语音播放
+                            </button>
+                            <button class="btn btn-sm btn-warning" onclick="stopDevice('${deviceId}')">
+                                ⏹️ 停止
+                            </button>
+                            <button class="btn btn-sm btn-outline" onclick="showDeviceDetail('${deviceId}')">
+                                ℹ️ 详情
+                            </button>
+                        </div>
+                        
+                        <div class="quick-actions">
+                            <button class="btn btn-sm btn-outline" onclick="quickSpeak('${deviceId}', '你好')">你好</button>
+                            <button class="btn btn-sm btn-outline" onclick="quickSpeak('${deviceId}', '现在几点了')">时间</button>
+                            <button class="btn btn-sm btn-outline" onclick="quickSpeak('${deviceId}', '今天天气怎么样')">天气</button>
+                            <button class="btn btn-sm btn-outline" onclick="quickSpeak('${deviceId}', '播放音乐')">音乐</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderEmptyState(message = '暂无设备') {
+                document.getElementById('devicesGrid').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📱</div>
+                        <p>${message}</p>
+                        ${message === '暂无设备' ? `
+                            <button class="btn btn-primary mt-lg" onclick="refreshDevices()">
+                                刷新设备列表
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            setFilter(filter) {
+                this.currentFilter = filter;
+                
+                // 更新标签状态
+                document.querySelectorAll('.filter-tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
+                
+                // 重新渲染设备
+                this.renderDevices();
+            }
+
+            selectDevice(deviceId) {
+                this.selectedDevices.add(deviceId);
+                this.updateSelection();
+                this.renderDevices();
+            }
+
+            toggleDeviceSelection(deviceId) {
+                if (this.selectedDevices.has(deviceId)) {
+                    this.selectedDevices.delete(deviceId);
+                } else {
+                    this.selectedDevices.add(deviceId);
+                }
+                this.updateSelection();
+            }
+
+            updateSelection() {
+                const count = this.selectedDevices.size;
+                const selectedCountEl = document.getElementById('selectedCount');
+                const batchActions = document.getElementById('batchActions');
+                
+                if (count > 0) {
+                    selectedCountEl.textContent = `已选择 ${count} 个设备`;
+                    selectedCountEl.classList.remove('hidden');
+                    batchActions.classList.add('show');
+                } else {
+                    selectedCountEl.classList.add('hidden');
+                    batchActions.classList.remove('show');
+                }
+            }
+
+            async speakToDevice(deviceId, deviceName) {
+                document.getElementById('targetDevices').innerHTML = `
+                    <div class="flex items-center gap-sm">
+                        <span class="device-icon" style="width: 24px; height: 24px; font-size: 1rem;">🎤</span>
+                        <span>${deviceName}</span>
+                    </div>
+                `;
+                document.getElementById('speakModal').classList.add('active');
+                document.getElementById('speakText').focus();
+                this.currentSpeakDevice = deviceId;
+                this.currentSpeakDevices = [deviceId];
+            }
+
+            async speakToSelected() {
+                if (this.selectedDevices.size === 0) {
+                    window.notifications.warning('请先选择要播放的设备');
+                    return;
+                }
+
+                const selectedNames = Array.from(this.selectedDevices).map(deviceId => {
+                    const device = this.devices.find(d => (d.did || d.device_id) === deviceId);
+                    return device ? device.name : '未知设备';
+                });
+
+                document.getElementById('targetDevices').innerHTML = `
+                    <div class="flex flex-col gap-xs">
+                        ${selectedNames.map(name => `
+                            <div class="flex items-center gap-sm">
+                                <span class="device-icon" style="width: 16px; height: 16px; font-size: 0.75rem;">🎤</span>
+                                <span>${name}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                document.getElementById('speakModal').classList.add('active');
+                document.getElementById('speakText').focus();
+                this.currentSpeakDevices = Array.from(this.selectedDevices);
+            }
+
+            async executeSpeak() {
+                const text = document.getElementById('speakText').value.trim();
+                if (!text) {
+                    window.notifications.error('请输入播放内容');
+                    return;
+                }
+
+                if (!this.currentSpeakDevices || this.currentSpeakDevices.length === 0) {
+                    window.notifications.error('请选择播放设备');
+                    return;
+                }
+
+                const speakBtn = document.getElementById('speakBtn');
+                this.setButtonLoading(speakBtn, true);
+
+                try {
+                    const promises = this.currentSpeakDevices.map(deviceId => 
+                        window.apiClient.speak({ text, device_id: deviceId })
+                    );
+
+                    await Promise.all(promises);
+                    
+                    window.notifications.success(`语音播放已发送到 ${this.currentSpeakDevices.length} 个设备`);
+                    this.closeModal('speakModal');
+                    document.getElementById('speakText').value = '';
+                    
+                } catch (error) {
+                    console.error('语音播放失败:', error);
+                    window.notifications.error('播放失败：' + error.message);
+                } finally {
+                    this.setButtonLoading(speakBtn, false);
+                }
+            }
+
+            async quickSpeak(deviceId, text) {
+                try {
+                    await window.apiClient.speak({ text, device_id: deviceId });
+                    window.notifications.success(`"${text}" 播放指令已发送`);
+                } catch (error) {
+                    console.error('快速播放失败:', error);
+                    window.notifications.error('播放失败：' + error.message);
+                }
+            }
+
+            async setDeviceVolume(deviceId, volume) {
+                try {
+                    console.log(`设置设备 ${deviceId} 音量为 ${volume}%`);
+                    await window.apiClient.setVolume({ device_id: deviceId, volume: parseInt(volume) });
+                    
+                    // 更新设备数据中的音量
+                    const device = this.devices.find(d => (d.did || d.device_id) === deviceId);
+                    if (device) {
+                        device.volume = parseInt(volume);
+                    }
+                    
+                    // 更新对应设备卡片的音量显示
+                    this.updateDeviceVolumeDisplay(deviceId, volume);
+                    
+                    window.notifications.success(`音量已设置为 ${volume}%`);
+                } catch (error) {
+                    console.error('设置音量失败:', error);
+                    window.notifications.error('设置音量失败：' + error.message);
+                }
+            }
+
+            updateDeviceVolumeDisplay(deviceId, volume) {
+                // 查找对应的设备卡片
+                const deviceCard = document.querySelector(`[data-device-id="${deviceId}"]`);
+                if (deviceCard) {
+                    // 更新音量滑块的值
+                    const volumeSlider = deviceCard.querySelector('.volume-slider');
+                    if (volumeSlider) {
+                        volumeSlider.value = volume;
+                    }
+                    
+                    // 更新音量百分比显示
+                    const volumeDisplay = deviceCard.querySelector('.volume-control span:last-child');
+                    if (volumeDisplay) {
+                        volumeDisplay.textContent = `${volume}%`;
+                    }
+                }
+            }
+
+            showDeviceDetail(deviceId) {
+                const device = this.devices.find(d => (d.did || d.device_id) === deviceId);
+                if (!device) return;
+
+                document.getElementById('deviceDetailTitle').textContent = device.name || '设备详情';
+                document.getElementById('deviceDetailContent').innerHTML = `
+                    <div class="form-group">
+                        <label class="form-label">设备名称</label>
+                        <div class="detail-value">${device.name || '未知设备'}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">设备ID</label>
+                        <div class="detail-value" onclick="copyDeviceId('${deviceId}')" style="cursor: pointer; font-family: monospace;">
+                            ${deviceId}
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">设备型号</label>
+                        <div class="detail-value">${device.model || device.type || '未知型号'}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">IP地址</label>
+                        <div class="detail-value">${device.ip || '未知'}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">状态</label>
+                        <div class="detail-value">
+                            ${utils.getStatusBadge(device.status === 'offline' ? 'inactive' : 'active', device.status === 'offline' ? '离线' : '在线')}
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">最后更新</label>
+                        <div class="detail-value">${utils.formatDateTime(device.last_seen || new Date())}</div>
+                    </div>
+                `;
+                
+                document.getElementById('deviceDetailModal').classList.add('active');
+            }
+
+            clearSelection() {
+                this.selectedDevices.clear();
+                this.updateSelection();
+                this.renderDevices();
+            }
+
+            setButtonLoading(button, loading) {
+                const btnText = button.querySelector('.btn-text');
+                const btnLoading = button.querySelector('.loading');
+                
+                if (loading) {
+                    btnText.classList.add('hidden');
+                    btnLoading.classList.remove('hidden');
+                    button.disabled = true;
+                } else {
+                    btnText.classList.remove('hidden');
+                    btnLoading.classList.add('hidden');
+                    button.disabled = false;
+                }
+            }
+
+            closeModal(modalId) {
+                document.getElementById(modalId).classList.remove('active');
+            }
+        }
+
+        // 全局函数
+        async function logout() {
+            try {
+                await window.apiClient.logout();
+                window.notifications.success('已退出登录');
+                window.location.href = '/login';
+            } catch (error) {
+                console.error('退出登录失败:', error);
+                window.apiClient.setToken(null);
+                window.apiClient.setCurrentUser(null);
+                window.location.href = '/login';
+            }
+        }
+
+        async function refreshDevices() {
+            if (window.devicesPage) {
+                try {
+                    window.loadingManager.show();
+                    
+                    // 调用后端刷新设备API
+                    const result = await window.apiClient.refreshAllDevices();
+                    
+                    if (result.success) {
+                        // 重新加载设备列表
+                        await window.devicesPage.loadDevices();
+                        window.notifications.success(result.message || '设备列表已刷新');
+                    } else {
+                        window.notifications.error(result.message || '刷新设备失败');
+                    }
+                } catch (error) {
+                    console.error('刷新设备失败:', error);
+                    window.notifications.error('刷新设备失败：' + error.message);
+                } finally {
+                    window.loadingManager.hide();
+                }
+            }
+        }
+
+        async function testAllDevices() {
+            if (window.devicesPage && window.devicesPage.devices.length > 0) {
+                try {
+                    const testBtn = document.getElementById('testAllBtn');
+                    testBtn.disabled = true;
+                    testBtn.textContent = '🔄 测试中...';
+                    
+                    // 只测试音箱设备（wifispeaker）
+                    const speakerDevices = window.devicesPage.devices.filter(device => {
+                        const model = device.model || device.type || '';
+                        return model.toLowerCase().includes('wifispeaker');
+                    });
+                    
+                    if (speakerDevices.length === 0) {
+                        window.notifications.warning('没有找到音箱设备');
+                        return;
+                    }
+                    
+                    const promises = speakerDevices.map(device => 
+                        window.apiClient.speak({
+                            text: '音箱设备测试，请忽略',
+                            device_id: device.did || device.device_id
+                        })
+                    );
+                    
+                    await Promise.allSettled(promises);
+                    window.notifications.success(`测试指令已发送到 ${speakerDevices.length} 个音箱设备`);
+                    
+                } catch (error) {
+                    window.notifications.error('测试失败：' + error.message);
+                } finally {
+                    const testBtn = document.getElementById('testAllBtn');
+                    testBtn.disabled = false;
+                    testBtn.textContent = '🎤 测试音箱设备';
+                }
+            }
+        }
+
+        function toggleDeviceSelection(deviceId) {
+            if (window.devicesPage) {
+                window.devicesPage.toggleDeviceSelection(deviceId);
+            }
+        }
+
+        async function copyDeviceId(deviceId) {
+            await utils.copyToClipboard(deviceId);
+        }
+
+        function speakToDevice(deviceId, deviceName) {
+            if (window.devicesPage) {
+                window.devicesPage.speakToDevice(deviceId, deviceName);
+            }
+        }
+
+        function speakToSelected() {
+            if (window.devicesPage) {
+                window.devicesPage.speakToSelected();
+            }
+        }
+
+        function executeSpeak() {
+            if (window.devicesPage) {
+                window.devicesPage.executeSpeak();
+            }
+        }
+
+        function quickSpeak(deviceId, text) {
+            if (window.devicesPage) {
+                window.devicesPage.quickSpeak(deviceId, text);
+            }
+        }
+
+        function setDeviceVolume(deviceId, volume) {
+            if (window.devicesPage) {
+                window.devicesPage.setDeviceVolume(deviceId, volume);
+            }
+        }
+
+        function stopDevice(deviceId) {
+            window.notifications.info('停止播放功能开发中...');
+        }
+
+        function showDeviceDetail(deviceId) {
+            if (window.devicesPage) {
+                window.devicesPage.showDeviceDetail(deviceId);
+            }
+        }
+
+        function closeModal(modalId) {
+            if (window.devicesPage) {
+                window.devicesPage.closeModal(modalId);
+            }
+        }
+
+        function clearSelection() {
+            if (window.devicesPage) {
+                window.devicesPage.clearSelection();
+            }
+        }
+
+        function stopSelected() {
+            window.notifications.info('批量停止功能开发中...');
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            window.devicesPage = new DevicesPage();
+        });
+    </script>
+</body>
+</html>

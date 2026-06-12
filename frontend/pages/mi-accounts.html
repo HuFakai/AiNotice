@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小米账户管理 - 爱通知</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
+    <link rel="stylesheet" href="../css/main.css">
+    <style>
+        .mi-accounts-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .radio-option:hover {
+            border-color: #3b82f6;
+            background-color: #f8fafc;
+        }
+
+        .radio-option input[type="radio"]:checked + .radio-label {
+            color: #3b82f6;
+        }
+
+        .radio-option input[type="radio"]:checked {
+            accent-color: #3b82f6;
+        }
+
+        .radio-option input[type="radio"] {
+            margin-top: 0.125rem;
+        }
+
+        .radio-label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .radio-label small {
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+
+        .accounts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .account-card {
+            background: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            box-shadow: var(--shadow-md);
+            transition: all var(--transition-fast);
+            border: 2px solid transparent;
+            position: relative;
+        }
+
+        .account-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .account-card.syncing {
+            border-color: var(--warning-color);
+        }
+
+        .account-card.success {
+            border-color: var(--secondary-color);
+        }
+
+        .account-card.error {
+            border-color: var(--error-color);
+        }
+
+        .account-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .account-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            margin-right: var(--spacing-md);
+        }
+
+        .account-info {
+            flex: 1;
+        }
+
+        .account-name {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .account-status {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            font-size: 0.875rem;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--gray-400);
+        }
+
+        .status-indicator.pending {
+            background: var(--warning-color);
+        }
+
+        .status-indicator.success {
+            background: var(--secondary-color);
+        }
+
+        .status-indicator.failed {
+            background: var(--error-color);
+        }
+
+        .account-dropdown {
+            position: relative;
+        }
+
+        .dropdown-button {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: var(--spacing-xs);
+            border-radius: var(--radius-sm);
+            transition: all var(--transition-fast);
+        }
+
+        .dropdown-button:hover {
+            background: var(--gray-100);
+            color: var(--text-primary);
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: var(--bg-primary);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-xl);
+            min-width: 160px;
+            z-index: 10;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all var(--transition-fast);
+        }
+
+        .dropdown-menu.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-item {
+            display: block;
+            width: 100%;
+            padding: var(--spacing-sm) var(--spacing-md);
+            text-align: left;
+            border: none;
+            background: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: background-color var(--transition-fast);
+            font-size: 0.875rem;
+        }
+
+        .dropdown-item:hover {
+            background: var(--gray-50);
+        }
+
+        .dropdown-item:first-child {
+            border-radius: var(--radius-md) var(--radius-md) 0 0;
+        }
+
+        .dropdown-item:last-child {
+            border-radius: 0 0 var(--radius-md) var(--radius-md);
+        }
+
+        .dropdown-item.danger {
+            color: var(--error-color);
+        }
+
+        .account-details {
+            margin: var(--spacing-lg) 0;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-md) 0;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            min-width: 80px;
+        }
+
+        .detail-value {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .device-count {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            background: var(--primary-color);
+            color: white;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .account-actions {
+            display: flex;
+            gap: var(--spacing-sm);
+            margin-top: var(--spacing-lg);
+        }
+
+        .sync-progress {
+            margin: var(--spacing-md) 0;
+            padding: var(--spacing-md);
+            background: var(--gray-50);
+            border-radius: var(--radius-md);
+            text-align: center;
+        }
+
+        .sync-progress.hidden {
+            display: none;
+        }
+
+        .progress-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--gray-300);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: var(--spacing-sm);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: var(--spacing-2xl);
+            color: var(--text-secondary);
+            background: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: var(--spacing-lg);
+        }
+
+
+
+        @media (max-width: 768px) {
+            .accounts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .mi-accounts-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-content">
+                <a href="/dashboard" class="navbar-brand">
+                    <img src="/assets/logo.svg" alt="爱通知" width="24" height="24" style="margin-right: 8px; vertical-align: middle;">
+                    爱通知
+                </a>
+                
+                <ul class="navbar-nav">
+                    <li><a href="/dashboard" class="navbar-link">控制台</a></li>
+                    <li><a href="/api-keys" class="navbar-link">API密钥</a></li>
+                    <li><a href="/devices" class="navbar-link">设备管理</a></li>
+                    <li><a href="/mi-accounts" class="navbar-link active">小米账户</a></li>
+                    <li><a href="/analytics" class="navbar-link">API统计</a></li>
+                    <li><a href="/docs-page" class="navbar-link">开发文档</a></li>
+                    <li><a href="/profile" class="navbar-link">个人资料</a></li>
+                </ul>
+                
+                <div class="navbar-user">
+                    <span id="userDisplayName" class="navbar-link">加载中...</span>
+                    <button class="btn btn-sm btn-outline" onclick="logout()">退出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容 -->
+    <div class="container">
+        <div class="content-wrapper">
+            <!-- 页面头部 -->
+            <div class="page-header">
+                <h1 class="page-title">小米账户管理</h1>
+                <p class="page-description">绑定您的小米账户，管理小爱音箱设备</p>
+            </div>
+
+
+
+            <!-- 操作头部 -->
+            <div class="mi-accounts-header">
+                <div class="flex items-center gap-md">
+                    <span class="text-secondary">共 <span id="totalAccounts">0</span> 个小米账户</span>
+                    <span id="syncingCount" class="text-warning hidden">正在同步 0 个账户</span>
+                </div>
+                <div class="flex gap-sm">
+                    <button class="btn btn-outline" onclick="refreshAccounts()">
+                        🔄 刷新列表
+                    </button>
+                    <button class="btn btn-primary" onclick="openAddAccountModal()">
+                        ➕ 添加小米账户
+                    </button>
+                </div>
+            </div>
+
+            <!-- 小米账户网格 -->
+            <div id="accountsGrid" class="accounts-grid">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔄</div>
+                    <p>正在加载小米账户...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加小米账户模态框 -->
+    <div id="addAccountModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">添加小米账户</h3>
+            </div>
+            <div class="modal-body">
+                <!-- 添加方式选择 -->
+                <div class="form-group">
+                    <label class="form-label">添加方式</label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="addMethod" value="simplified" checked onchange="toggleAddMethod()">
+                            <span class="radio-label">
+                                <strong>🚀 快速添加（推荐）</strong>
+                                <small>只需小米账号和密码，系统自动获取其他信息</small>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="addMethod" value="manual" onchange="toggleAddMethod()">
+                            <span class="radio-label">
+                                <strong>🔧 手动添加</strong>
+                                <small>手动输入所有参数（适用于高级用户）</small>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 简化表单 -->
+                <form id="addAccountFormSimplified">
+                    <div class="form-group">
+                        <label for="miUsernameSimple" class="form-label">小米用户名</label>
+                        <input 
+                            type="text" 
+                            id="miUsernameSimple" 
+                            name="mi_username" 
+                            class="form-input" 
+                            placeholder="请输入小米用户名或手机号"
+                            autocomplete="username"
+                            required
+                        >
+                        <div class="form-help">请输入您的小米账户用户名或手机号</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="miPasswordSimple" class="form-label">小米密码</label>
+                        <input 
+                            type="password" 
+                            id="miPasswordSimple" 
+                            name="mi_password" 
+                            class="form-input" 
+                            placeholder="请输入小米密码"
+                            autocomplete="current-password"
+                            required
+                        >
+                        <div class="form-help">密码将被安全加密存储</div>
+                    </div>
+
+                    <div class="alert alert-success">
+                        <strong>✨ 智能添加</strong><br>
+                        系统将自动登录您的小米账户并获取设备ID、用户ID和认证令牌等信息，无需手动输入。
+                    </div>
+                </form>
+
+                <!-- 手动表单 -->
+                <form id="addAccountFormManual" style="display: none;">
+                    <div class="form-group">
+                        <label for="miUsername" class="form-label">小米用户名</label>
+                        <input 
+                            type="text" 
+                            id="miUsername" 
+                            name="mi_username" 
+                            class="form-input" 
+                            placeholder="请输入小米用户名"
+                            autocomplete="username"
+                        >
+                        <div class="form-help">请输入您的小米账户用户名或手机号</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="miPassword" class="form-label">小米密码</label>
+                        <input 
+                            type="password" 
+                            id="miPassword" 
+                            name="mi_password" 
+                            class="form-input" 
+                            placeholder="请输入小米密码"
+                            autocomplete="current-password"
+                        >
+                        <div class="form-help">密码将被安全加密存储</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="miDeviceId" class="form-label">设备ID (Device ID)</label>
+                        <input 
+                            type="text" 
+                            id="miDeviceId" 
+                            name="device_id" 
+                            class="form-input" 
+                            placeholder="请输入设备ID"
+                        >
+                        <div class="form-help">小米账户的设备标识符</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="miUserId" class="form-label">用户ID (User ID)</label>
+                        <input 
+                            type="text" 
+                            id="miUserId" 
+                            name="user_id" 
+                            class="form-input" 
+                            placeholder="请输入用户ID"
+                        >
+                        <div class="form-help">小米账户的用户标识符</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="miPassToken" class="form-label">通行令牌 (Pass Token)</label>
+                        <textarea 
+                            id="miPassToken" 
+                            name="pass_token" 
+                            class="form-input" 
+                            placeholder="请输入通行令牌"
+                            rows="3"
+                        ></textarea>
+                        <div class="form-help">小米账户的认证令牌</div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <strong>🔒 安全提示</strong><br>
+                        您的小米账户信息将被安全加密存储，仅用于设备控制。我们不会存储或传输您的明文密码。
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addAccountModal')">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addMiAccount()" id="addAccountBtn">
+                    <span class="btn-text">➕ 添加账户</span>
+                    <span class="loading hidden">添加中...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- 账户详情模态框 -->
+    <div id="accountDetailModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="accountDetailTitle">账户详情</h3>
+            </div>
+            <div class="modal-body">
+                <div id="accountDetailContent">
+                    <div class="detail-row">
+                        <span class="detail-label">账户ID</span>
+                        <span class="detail-value" id="detailAccountId">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">用户名</span>
+                        <span class="detail-value" id="detailUsername">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">账户状态</span>
+                        <span class="detail-value" id="detailStatus">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">设备数量</span>
+                        <span class="detail-value" id="detailDeviceCount">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">最后同步</span>
+                        <span class="detail-value" id="detailLastSync">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">创建时间</span>
+                        <span class="detail-value" id="detailCreatedAt">-</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('accountDetailModal')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="../js/utils.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script>
+        class MiAccountsPage {
+            constructor() {
+                this.accounts = [];
+                this.syncingAccounts = new Set();
+                
+                this.init();
+            }
+
+            async init() {
+                // 检查登录状态
+                if (!window.apiClient.isAuthenticated()) {
+                window.location.href = '/login';
+                return;
+            }
+
+                try {
+                    // 获取当前用户信息
+                    const currentUser = window.apiClient.getCurrentUser();
+                    if (currentUser) {
+                        document.getElementById('userDisplayName').textContent = 
+                            currentUser.display_name || currentUser.username;
+                    }
+                    
+                    // 绑定事件
+                    this.bindEvents();
+                    
+                    // 加载小米账户
+                    await this.loadMiAccounts();
+                    
+                } catch (error) {
+                    console.error('初始化小米账户页面失败:', error);
+                    window.notifications.error('加载页面失败：' + error.message);
+                }
+            }
+
+            bindEvents() {
+                // 点击其他地方关闭下拉菜单
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.account-dropdown')) {
+                        this.closeAllDropdowns();
+                    }
+                });
+            }
+
+            async loadMiAccounts() {
+                try {
+                    window.loadingManager.show();
+                    
+                    // 调用后端API获取小米账户列表
+                    const response = await window.apiClient.getMiAccounts();
+                    
+                    this.accounts = response || [];
+                    this.renderAccounts();
+                    this.updateAccountCounts();
+                    
+                } catch (error) {
+                    console.error('加载小米账户失败:', error);
+                    window.notifications.error('加载小米账户失败：' + error.message);
+                    this.renderEmptyState('加载失败');
+                } finally {
+                    window.loadingManager.hide();
+                }
+            }
+
+            renderAccounts() {
+                const container = document.getElementById('accountsGrid');
+                
+                if (this.accounts.length === 0) {
+                    this.renderEmptyState();
+                    return;
+                }
+
+                container.innerHTML = this.accounts.map(account => this.renderAccountCard(account)).join('');
+            }
+
+            renderAccountCard(account) {
+                const statusClass = this.getStatusClass(account.sync_status);
+                const statusText = this.getStatusText(account.sync_status);
+                const statusIcon = this.getStatusIcon(account.sync_status);
+                
+                return `
+                    <div class="account-card ${statusClass}" data-account-id="${account.id}">
+                        <div class="account-header">
+                            <div class="flex items-center">
+                                <div class="account-avatar">🎤</div>
+                                <div class="account-info">
+                                    <div class="account-name">${account.mi_username}</div>
+                                    <div class="account-status">
+                                        <div class="status-indicator ${account.sync_status}"></div>
+                                        <span>${statusText}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="account-dropdown">
+                                <button class="dropdown-button" onclick="toggleDropdown(${account.id})">⋮</button>
+                                <div class="dropdown-menu" id="dropdown-${account.id}">
+                                    <button class="dropdown-item" onclick="viewAccountDetail(${account.id})">
+                                        📄 查看详情
+                                    </button>
+                                    <button class="dropdown-item" onclick="toggleAccountStatus(${account.id}, ${!account.is_active})">
+                                        ${account.is_active ? '⏸️ 禁用' : '▶️ 启用'}
+                                    </button>
+                                    <button class="dropdown-item danger" onclick="deleteAccount(${account.id})">
+                                        🗑️ 删除账户
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="account-details">
+                            <div class="detail-row">
+                                <span class="detail-label">设备数量</span>
+                                <span class="detail-value">
+                                    <span class="device-count">
+                                        📱 ${account.device_count} 个音箱设备
+                                    </span>
+                                </span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">账户状态</span>
+                                <span class="detail-value">${account.is_active ? '✅ 已启用' : '⏸️ 已禁用'}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">最后同步</span>
+                                <span class="detail-value">
+                                    ${account.last_sync_at ? utils.formatRelativeTime(account.last_sync_at) : '从未同步'}
+                                </span>
+                            </div>
+                            ${account.error_message ? `
+                                <div class="detail-row">
+                                    <span class="detail-label">错误信息</span>
+                                    <span class="detail-value" style="color: var(--error-color);">
+                                        ${account.error_message}
+                                    </span>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="sync-progress hidden" id="sync-progress-${account.id}">
+                            <div class="progress-spinner"></div>
+                            <span>正在同步设备信息...</span>
+                        </div>
+
+                        <div class="account-actions">
+                            <button class="btn btn-sm btn-primary" onclick="viewDevices(${account.id})">
+                                📱 查看设备
+                            </button>
+                            <button class="btn btn-sm btn-outline" onclick="refreshAccountDevices(${account.id})">
+                                🔄 刷新设备
+                            </button>
+
+                            ${account.device_count > 0 ? `
+                                <button class="btn btn-sm btn-outline" onclick="testDeviceSpeak(${account.id})">
+                                    🎤 测试播放
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderEmptyState(message = '暂无小米账户') {
+                document.getElementById('accountsGrid').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📱</div>
+                        <p>${message}</p>
+                        ${message === '暂无小米账户' ? `
+                            <button class="btn btn-primary mt-lg" onclick="openAddAccountModal()">
+                                ➕ 添加第一个小米账户
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            getStatusClass(status) {
+                switch (status) {
+                    case 'pending': return 'syncing';
+                    case 'success': return 'success';
+                    case 'failed': return 'error';
+                    default: return '';
+                }
+            }
+
+            getStatusText(status) {
+                switch (status) {
+                    case 'pending': return '同步中';
+                    case 'success': return '同步成功';
+                    case 'failed': return '同步失败';
+                    default: return '未知状态';
+                }
+            }
+
+            getStatusIcon(status) {
+                switch (status) {
+                    case 'pending': return '🔄';
+                    case 'success': return '✅';
+                    case 'failed': return '❌';
+                    default: return '❓';
+                }
+            }
+
+            updateAccountCounts() {
+                document.getElementById('totalAccounts').textContent = this.accounts.length;
+                
+                const syncingCount = this.accounts.filter(acc => acc.sync_status === 'pending').length;
+                const syncingEl = document.getElementById('syncingCount');
+                
+                if (syncingCount > 0) {
+                    syncingEl.textContent = `正在同步 ${syncingCount} 个账户`;
+                    syncingEl.classList.remove('hidden');
+                } else {
+                    syncingEl.classList.add('hidden');
+                }
+            }
+
+            async addMiAccount() {
+                // 获取当前选择的添加方式
+                const addMethod = document.querySelector('input[name="addMethod"]:checked').value;
+                const form = document.getElementById(addMethod === 'simplified' ? 'addAccountFormSimplified' : 'addAccountFormManual');
+                const formData = new FormData(form);
+                const addBtn = document.getElementById('addAccountBtn');
+                
+                try {
+                    // 验证表单
+                    const miUsername = formData.get('mi_username')?.trim();
+                    const miPassword = formData.get('mi_password');
+                    
+                    if (!miUsername) {
+                        window.notifications.error('请输入小米用户名');
+                        return;
+                    }
+                    
+                    if (!miPassword || miPassword.length < 6) {
+                        window.notifications.error('请输入正确的小米密码（至少6位）');
+                        return;
+                    }
+
+                    this.setButtonLoading(addBtn, true);
+
+                    // 根据添加方式调用不同的API
+                    let response;
+                    if (addMethod === 'simplified') {
+                        // 简化添加：只需用户名和密码
+                        response = await window.apiClient.createMiAccountSimplified({
+                            mi_username: miUsername,
+                            mi_password: miPassword
+                        });
+                    } else {
+                        // 手动添加：需要所有参数
+                        const deviceId = formData.get('device_id')?.trim();
+                        const userId = formData.get('user_id')?.trim();
+                        const passToken = formData.get('pass_token')?.trim();
+                        
+                        if (!deviceId) {
+                            window.notifications.error('请输入设备ID');
+                            return;
+                        }
+                        
+                        if (!userId) {
+                            window.notifications.error('请输入用户ID');
+                            return;
+                        }
+                        
+                        if (!passToken) {
+                            window.notifications.error('请输入通行令牌');
+                            return;
+                        }
+                        
+                        response = await window.apiClient.createMiAccount({
+                            mi_username: miUsername,
+                            mi_password: miPassword,
+                            device_id: deviceId,
+                            user_id: userId,
+                            pass_token: passToken
+                        });
+                    }
+
+                    window.notifications.success('小米账户添加成功，正在同步设备信息');
+                    this.closeModal('addAccountModal');
+                    
+                    // 重置表单
+                    form.reset();
+                    
+                    // 刷新账户列表
+                    await this.loadMiAccounts();
+                    
+                    // 显示流程步骤
+                    this.showAuthSteps();
+                    
+                } catch (error) {
+                    console.error('添加小米账户失败:', error);
+                    window.notifications.error('添加失败：' + error.message);
+                } finally {
+                    this.setButtonLoading(addBtn, false);
+                }
+            }
+
+            showAuthSteps() {
+                // 模拟流程步骤
+                const steps = ['step1', 'step2', 'step3', 'step4'];
+                
+                steps.forEach((stepId, index) => {
+                    setTimeout(() => {
+                        document.getElementById(stepId).classList.add('active');
+                        setTimeout(() => {
+                            document.getElementById(stepId).classList.remove('active');
+                            document.getElementById(stepId).classList.add('completed');
+                        }, 1000);
+                    }, index * 1500);
+                });
+            }
+
+            toggleDropdown(accountId) {
+                this.closeAllDropdowns();
+                const dropdown = document.getElementById(`dropdown-${accountId}`);
+                dropdown.classList.add('active');
+            }
+
+            closeAllDropdowns() {
+                document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                    menu.classList.remove('active');
+                });
+            }
+
+            setButtonLoading(button, loading) {
+                const btnText = button.querySelector('.btn-text');
+                const btnLoading = button.querySelector('.loading');
+                
+                if (loading) {
+                    btnText.classList.add('hidden');
+                    btnLoading.classList.remove('hidden');
+                    button.disabled = true;
+                } else {
+                    btnText.classList.remove('hidden');
+                    btnLoading.classList.add('hidden');
+                    button.disabled = false;
+                }
+            }
+
+            closeModal(modalId) {
+                document.getElementById(modalId).classList.remove('active');
+            }
+        }
+
+        // 全局函数
+        async function logout() {
+            try {
+                await window.apiClient.logout();
+                window.notifications.success('已退出登录');
+                window.location.href = '/login';
+            } catch (error) {
+                console.error('退出登录失败:', error);
+                window.apiClient.setToken(null);
+                window.apiClient.setCurrentUser(null);
+                window.location.href = '/login';
+            }
+        }
+
+        async function refreshAccounts() {
+            if (window.miAccountsPage) {
+                await window.miAccountsPage.loadMiAccounts();
+                window.notifications.success('账户列表已刷新');
+            }
+        }
+
+        function openAddAccountModal() {
+            document.getElementById('addAccountModal').classList.add('active');
+            document.getElementById('miUsernameSimple').focus();
+        }
+
+        function toggleAddMethod() {
+            const addMethod = document.querySelector('input[name="addMethod"]:checked').value;
+            const simplifiedForm = document.getElementById('addAccountFormSimplified');
+            const manualForm = document.getElementById('addAccountFormManual');
+            
+            if (addMethod === 'simplified') {
+                simplifiedForm.style.display = 'block';
+                manualForm.style.display = 'none';
+                document.getElementById('miUsernameSimple').focus();
+            } else {
+                simplifiedForm.style.display = 'none';
+                manualForm.style.display = 'block';
+                document.getElementById('miUsername').focus();
+            }
+        }
+
+        function addMiAccount() {
+            if (window.miAccountsPage) {
+                window.miAccountsPage.addMiAccount();
+            }
+        }
+
+        function toggleDropdown(accountId) {
+            if (window.miAccountsPage) {
+                window.miAccountsPage.toggleDropdown(accountId);
+            }
+        }
+
+        async function viewAccountDetail(accountId) {
+            try {
+                const response = await window.apiClient.getMiAccountDetail(accountId);
+                const account = response; // 直接使用response，不使用response.data
+                
+                // 填充详情模态框
+                document.getElementById('detailAccountId').textContent = account.id;
+                document.getElementById('detailUsername').textContent = account.mi_username;
+                document.getElementById('detailStatus').textContent = account.is_active ? '启用' : '禁用';
+                document.getElementById('detailDeviceCount').textContent = account.device_count || 0;
+                document.getElementById('detailLastSync').textContent = account.last_sync_at ? new Date(account.last_sync_at).toLocaleString() : '从未同步';
+                document.getElementById('detailCreatedAt').textContent = new Date(account.created_at).toLocaleString();
+                
+                // 显示模态框
+                document.getElementById('accountDetailModal').classList.add('active');
+            } catch (error) {
+                console.error('获取账户详情失败:', error);
+                window.notifications.error('获取账户详情失败：' + error.message);
+            }
+        }
+
+
+
+        async function toggleAccountStatus(accountId, newStatus) {
+            try {
+                const action = newStatus ? '启用' : '禁用';
+                window.notifications.info(`正在${action}账户...`);
+                
+                const response = await window.apiClient.updateMiAccountStatus(accountId, { is_active: newStatus });
+                
+                window.notifications.success(`账户${action}成功`);
+                
+                // 刷新账户列表
+                await refreshAccounts();
+            } catch (error) {
+                console.error('切换账户状态失败:', error);
+                window.notifications.error('操作失败：' + error.message);
+            }
+        }
+
+        async function deleteAccount(accountId) {
+            if (!confirm('确定要删除这个小米账户吗？删除后将无法恢复，且相关设备将无法使用。')) {
+                return;
+            }
+            
+            try {
+                window.notifications.info('正在删除账户...');
+                
+                const response = await window.apiClient.deleteMiAccount(accountId);
+                
+                window.notifications.success('账户删除成功');
+                
+                // 刷新账户列表
+                await refreshAccounts();
+            } catch (error) {
+                console.error('删除账户失败:', error);
+                window.notifications.error('删除失败：' + error.message);
+            }
+        }
+
+        function viewDevices(accountId) {
+            window.location.href = `devices?account=${accountId}`;
+        }
+
+        async function testDeviceSpeak(accountId) {
+            try {
+                window.notifications.info('正在获取音箱设备...');
+                
+                // 获取该账户下的设备列表
+                const devicesResponse = await window.apiClient.getDevices();
+                const devices = devicesResponse || []; // 直接使用devicesResponse，不使用.data
+                
+                // 过滤出音箱设备（包含wifispeaker的设备）
+                const speakerDevices = devices.filter(device => {
+                    const model = device.model || '';
+                    return model.includes('wifispeaker') && device.status === 'online';
+                });
+                
+                if (speakerDevices.length === 0) {
+                    window.notifications.warning('未找到在线的音箱设备');
+                    return;
+                }
+                
+                // 选择第一个音箱设备进行测试
+                const testDevice = speakerDevices[0];
+                const deviceId = testDevice.device_id; // 使用device_id
+                
+                window.notifications.info(`正在测试设备：${testDevice.name}`);
+                
+                // 发送测试语音
+                const speakResponse = await window.apiClient.speak({
+                    device_id: deviceId,
+                    text: '小米账户连接测试成功，设备工作正常',
+                    volume: 50
+                });
+                
+                window.notifications.success(`测试播放成功，设备：${testDevice.name}`);
+                
+            } catch (error) {
+                console.error('设备测试失败:', error);
+                window.notifications.error('测试播放失败：' + error.message);
+            }
+        }
+
+        async function refreshAccountDevices(accountId) {
+            try {
+                window.loadingManager.show();
+                
+                // 调用后端刷新指定账户设备API
+                const result = await window.apiClient.refreshAccountDevices(accountId);
+                
+                if (result.success) {
+                    // 重新加载账户列表以更新设备数量
+                    if (window.miAccountsPage) {
+                        await window.miAccountsPage.loadMiAccounts();
+                    }
+                    window.notifications.success(result.message || '设备列表已刷新');
+                } else {
+                    window.notifications.error(result.message || '刷新设备失败');
+                }
+            } catch (error) {
+                console.error('刷新账户设备失败:', error);
+                window.notifications.error('刷新设备失败：' + error.message);
+            } finally {
+                window.loadingManager.hide();
+            }
+        }
+
+
+
+        function closeModal(modalId) {
+            if (window.miAccountsPage) {
+                window.miAccountsPage.closeModal(modalId);
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            window.miAccountsPage = new MiAccountsPage();
+        });
+    </script>
+</body>
+</html>

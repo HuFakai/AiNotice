@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API统计分析 - 爱通知</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
+    <link rel="stylesheet" href="../css/main.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        .analytics-header {
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--gray-200);
+            padding: var(--spacing-lg) 0;
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .analytics-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+        }
+
+        .analytics-title h1 {
+            font-size: 1.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .analytics-controls {
+            display: flex;
+            gap: var(--spacing-sm);
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+
+        .filter-group label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .filter-select, .filter-input {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--gray-300);
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .stats-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-2xl);
+        }
+
+        .stat-card {
+            background: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            box-shadow: var(--shadow-md);
+            transition: all var(--transition-fast);
+        }
+
+        .stat-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .stat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .stat-icon.calls {
+            background: rgba(79, 70, 229, 0.1);
+            color: var(--primary-color);
+        }
+
+        .stat-icon.success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--secondary-color);
+        }
+
+        .stat-icon.performance {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning-color);
+        }
+
+        .stat-icon.errors {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error-color);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .stat-change {
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .stat-change.positive {
+            color: var(--secondary-color);
+        }
+
+        .stat-change.negative {
+            color: var(--error-color);
+        }
+
+        .analytics-content {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: var(--spacing-xl);
+        }
+
+        .chart-container {
+            background: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            box-shadow: var(--shadow-md);
+        }
+
+        .chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-lg);
+            border-bottom: 1px solid var(--gray-200);
+            padding-bottom: var(--spacing-lg);
+        }
+
+        .chart-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .chart-canvas {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--gray-200);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .tab {
+            padding: var(--spacing-md) var(--spacing-lg);
+            background: none;
+            border: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all var(--transition-fast);
+        }
+
+        .tab.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: var(--spacing-lg);
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: var(--spacing-md);
+            text-align: left;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .data-table th {
+            background: var(--gray-50);
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .data-table td {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .data-table tr:hover {
+            background: var(--gray-50);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-badge.success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--secondary-color);
+        }
+
+        .status-badge.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error-color);
+        }
+
+        .status-badge.warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning-color);
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: var(--spacing-lg);
+            padding-top: var(--spacing-lg);
+            border-top: 1px solid var(--gray-200);
+        }
+
+        .pagination-info {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: var(--spacing-sm);
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-2xl);
+            color: var(--text-secondary);
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error-color);
+            padding: var(--spacing-md);
+            border-radius: var(--radius-md);
+            margin: var(--spacing-lg) 0;
+            font-size: 0.875rem;
+        }
+
+
+
+        .real-time-indicator {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .real-time-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--secondary-color);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .speak-text {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        
+        .speak-text:hover {
+            white-space: normal;
+            word-wrap: break-word;
+        }
+
+        @media (max-width: 768px) {
+            .analytics-title {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .analytics-controls {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .stats-overview {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-group {
+                flex-direction: column;
+                align-items: flex-start;
+                width: 100%;
+            }
+
+            .filter-select, .filter-input {
+                width: 100%;
+            }
+
+            .chart-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: var(--spacing-md);
+            }
+
+
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-content">
+                <a href="/dashboard" class="navbar-brand">
+                    <img src="/assets/logo.svg" alt="爱通知" width="24" height="24" style="margin-right: 8px; vertical-align: middle;">
+                    爱通知
+                </a>
+                
+                <ul class="navbar-nav">
+                    <li><a href="/dashboard" class="navbar-link">控制台</a></li>
+                    <li><a href="/api-keys" class="navbar-link">API密钥</a></li>
+                    <li><a href="/devices" class="navbar-link">设备管理</a></li>
+                    <li><a href="/mi-accounts" class="navbar-link">小米账户</a></li>
+                    <li><a href="/analytics" class="navbar-link active">API统计</a></li>
+                    <li><a href="/docs-page" class="navbar-link">开发文档</a></li>
+                    <li><a href="/profile" class="navbar-link">个人资料</a></li>
+                </ul>
+                
+                <div class="navbar-user">
+                    <span id="userDisplayName" class="navbar-link">加载中...</span>
+                    <button class="btn btn-sm btn-outline" onclick="logout()">退出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容 -->
+    <main class="main-content">
+        <!-- 页面头部 -->
+        <div class="analytics-header">
+            <div class="container">
+                <div class="analytics-title">
+
+                    <div class="analytics-controls">
+                        <div class="filter-group">
+                            <label for="periodSelect">时间范围:</label>
+                            <select id="periodSelect" class="filter-select">
+                                <option value="24h" selected>最近24小时</option>
+                                <option value="7d">最近7天</option>
+                                <option value="30d">最近30天</option>
+                                <option value="90d">最近90天</option>
+                                <option value="custom">自定义</option>
+                            </select>
+                        </div>
+                        <div class="filter-group" id="customDateRange" style="display: none;">
+                            <label for="startDate">开始日期:</label>
+                            <input type="date" id="startDate" class="filter-input">
+                            <label for="endDate">结束日期:</label>
+                            <input type="date" id="endDate" class="filter-input">
+                        </div>
+                        <div class="filter-group">
+                            <label for="deviceFilter">设备筛选:</label>
+                            <select id="deviceFilter" class="filter-select">
+                                <option value="">全部设备</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="apiKeyNameFilter">API密钥名称:</label>
+                            <select id="apiKeyNameFilter" class="filter-select">
+                                <option value="">全部密钥</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="speakTextFilter">播报内容:</label>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="speakTextFilter" class="filter-input" placeholder="输入关键词">
+                                <button class="btn btn-primary" id="searchButton" onclick="performSearch()">搜索</button>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="refreshData()">刷新数据</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <!-- 统计概览 -->
+            <div class="stats-overview" id="statsOverview">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon calls">📊</div>
+                        <div class="real-time-indicator">
+                            <div class="real-time-dot"></div>
+                            <span>实时</span>
+                        </div>
+                    </div>
+                    <div class="stat-value" id="totalCalls">-</div>
+                    <div class="stat-label">总播报次数</div>
+                    <div class="stat-change" id="callsChange"></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon success">✅</div>
+                    </div>
+                    <div class="stat-value" id="successRate">-</div>
+                    <div class="stat-label">播报成功率</div>
+                    <div class="stat-change" id="successRateChange"></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon performance">⚡</div>
+                    </div>
+                    <div class="stat-value" id="avgResponseTime">-</div>
+                    <div class="stat-label">平均响应时间</div>
+                    <div class="stat-change" id="responseTimeChange"></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon errors">❌</div>
+                    </div>
+                    <div class="stat-value" id="errorCount">-</div>
+                    <div class="stat-label">播报失败次数</div>
+                    <div class="stat-change" id="errorChange"></div>
+                </div>
+            </div>
+
+            <!-- 分析内容 -->
+            <div class="analytics-content">
+                <!-- 趋势图表 -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Speak播报趋势分析</h3>
+                        <div class="tabs">
+                            <button class="tab active" onclick="switchChart('calls')">播报量</button>
+                        </div>
+                    </div>
+                    <div class="chart-canvas">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 详细分析 -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">详细分析</h3>
+                        <div class="tabs">
+                            <button class="tab active" onclick="switchTab('logs')">播报记录</button>
+                            <button class="tab" onclick="switchTab('devices')">设备统计</button>
+                        </div>
+                    </div>
+
+                    <!-- 播报记录 -->
+                    <div id="logsTab" class="tab-content active">
+                        <div class="loading" id="logsLoading">加载中...</div>
+                        <div id="logsContent" style="display: none;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>时间</th>
+                                        <th>设备名称</th>
+                                        <th>设备ID</th>
+                                        <th>密钥名称</th>
+                                        <th>播报内容</th>
+                                        <th>状态码</th>
+                                        <th>请求IP</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="logsTableBody">
+                                </tbody>
+                            </table>
+                            <div class="pagination" id="logsPagination">
+                                <div class="pagination-info" id="logsInfo"></div>
+                                <div class="pagination-controls" id="logsControls"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 设备统计 -->
+                    <div id="devicesTab" class="tab-content">
+                        <div class="loading" id="devicesLoading">加载中...</div>
+                        <div id="devicesContent" style="display: none;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>设备名称</th>
+                                        <th>设备ID</th>
+                                        <th>播报次数</th>
+                                        <th>成功次数</th>
+                                        <th>成功率</th>
+                                        <th>平均响应时间</th>
+                                        <th>最后播报时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="devicesTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 错误提示 -->
+    <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/utils.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/analytics.js"></script>
+</body>
+</html>

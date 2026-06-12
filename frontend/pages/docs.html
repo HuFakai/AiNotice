@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>开发文档 - 爱通知</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
+     <link rel="stylesheet" href="../css/main.css">
+  <style>
+    .doc-container { max-width: 1080px; margin: 0 auto; padding: var(--spacing-2xl) var(--spacing-xl); }
+    .doc-header { margin-bottom: var(--spacing-xl); }
+    .doc-title { font-size: 2rem; font-weight: 700; }
+    .doc-desc { color: var(--text-secondary); margin-top: var(--spacing-sm); }
+    .doc-section { margin: var(--spacing-2xl) 0; }
+    .doc-h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: var(--spacing-md); }
+    .doc-h3 { font-size: 1rem; font-weight: 600; margin-top: var(--spacing-lg); margin-bottom: var(--spacing-sm); }
+    .doc-card { background: var(--bg-primary); border-radius: var(--radius-lg); padding: var(--spacing-xl); box-shadow: var(--shadow-md); }
+    .doc-grid { display: grid; grid-template-columns: 1fr; gap: var(--spacing-lg); }
+    @media (min-width: 900px) { .doc-grid { grid-template-columns: 1fr 1fr; } }
+    pre { background: #0b1021; color: #e5e7eb; border-radius: 8px; padding: 16px; overflow: auto; font-size: 13px; line-height: 1.5; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .kbd { background: var(--gray-100); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--gray-200); font-family: monospace; }
+    .tip { background: #f0fdf4; border: 1px solid #86efac; color: #166534; padding: 8px 12px; border-radius: 8px; margin-top: var(--spacing-sm); }
+    .warn { background: #fff7ed; border: 1px solid #fdba74; color: #7c2d12; padding: 8px 12px; border-radius: 8px; margin-top: var(--spacing-sm); }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .badge-get { background: #e0f2fe; color: #075985; }
+    .badge-post { background: #dcfce7; color: #14532d; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="navbar-content">
+        <a href="/dashboard" class="navbar-brand">
+           <img src="/assets/logo.svg" alt="爱通知" width="24" height="24" style="margin-right: 8px; vertical-align: middle;">
+           爱通知
+         </a>
+        <ul class="navbar-nav">
+          <li><a href="/dashboard" class="navbar-link">控制台</a></li>
+          <li><a href="/api-keys" class="navbar-link">API密钥</a></li>
+          <li><a href="/devices" class="navbar-link">设备管理</a></li>
+          <li><a href="/mi-accounts" class="navbar-link">小米账户</a></li>
+          <li><a href="/analytics" class="navbar-link">API统计</a></li>
+          <li><a href="/docs-page" class="navbar-link active">开发文档</a></li>
+          <li><a href="/profile" class="navbar-link">个人资料</a></li>
+        </ul>
+        <div class="navbar-user">
+          <span id="userDisplayName" class="navbar-link">加载中...</span>
+          <button class="btn btn-sm btn-outline" onclick="logout()">退出</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="doc-container">
+    <header class="doc-header">
+      <div class="doc-title">使用 API 密钥调用小爱音箱 API</div>
+      <p class="doc-desc">本页提供多语言代码示例，展示如何在服务器端或受信任环境中使用 API 密钥（API Key）访问平台接口。</p>
+      <div class="tip">说明：服务器端推荐在 <span class="kbd">Authorization</span> 头中携带 API Key。支持格式：<span class="kbd">Bearer xai_sk_...</span>、<span class="kbd">ApiKey xai_sk_...</span> 或直接 <span class="kbd">xai_sk_...</span>。</div>
+    </header>
+
+    <section class="doc-section doc-card">
+      <div class="doc-h2">基础信息</div>
+      <ul>
+        <li><b>API 基础地址</b>：<span class="kbd">http://localhost:8000/api/v1</span></li>
+        <li><b>认证方式</b>：在 <span class="kbd">Authorization</span> 请求头中携带 API Key</li>
+        <li><b>示例接口</b>：<span class="badge badge-get">GET</span> <span class="kbd">/devices</span>（获取设备列表），<span class="badge badge-post">POST</span> <span class="kbd">/speak</span>（指定设备播放文字）</li>
+      </ul>
+      <div class="warn">安全提示：请仅在后端服务或可信执行环境中使用 API Key，避免在浏览器前端直接暴露。</div>
+    </section>
+
+    <section class="doc-section">
+      <div class="doc-h2">准备工作</div>
+      <div class="doc-card">
+        <div class="doc-h3">环境变量</div>
+        <p>以下示例均假设你已将 API Key 配置到环境变量：</p>
+        <pre><code># macOS / Linux（建议写入~/.zshrc 或服务进程环境）
+export XAI_API_URL=http://localhost:8000/api/v1
+export XAI_API_KEY="xai_sk_xxxxxxxxxxxxxxxxxxxxxx"
+
+# Windows PowerShell
+$env:XAI_API_URL="http://localhost:8000/api/v1"
+$env:XAI_API_KEY="xai_sk_xxxxxxxxxxxxxxxxxxxxxx"</code></pre>
+      </div>
+    </section>
+
+    <section class="doc-section">
+      <div class="doc-h2">获取设备列表（GET /devices）</div>
+      <div class="doc-grid">
+        <div class="doc-card">
+          <div class="doc-h3">curl</div>
+          <pre><code>curl -s -X GET "$XAI_API_URL/devices" \
+  -H "Authorization: Bearer $XAI_API_KEY"</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">Python (requests)</div>
+          <pre><code>import os, requests
+url = f"{os.getenv('XAI_API_URL')}/devices"
+headers = {"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"}
+r = requests.get(url, headers=headers, timeout=10)
+print(r.status_code, r.json())</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">Node.js (axios)</div>
+          <pre><code>const axios = require('axios');
+const baseURL = process.env.XAI_API_URL;
+const apiKey = process.env.XAI_API_KEY;
+
+axios.get(`${baseURL}/devices`, {
+  headers: { Authorization: `Bearer ${apiKey}` }
+}).then(res => console.log(res.data))
+  .catch(err => console.error(err.response?.data || err.message));</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">Go (net/http)</div>
+          <pre><code>package main
+import (
+  "fmt"
+  "net/http"
+  "os"
+  "io/ioutil"
+)
+func main() {
+  url := os.Getenv("XAI_API_URL") + "/devices"
+  req, _ := http.NewRequest("GET", url, nil)
+  req.Header.Set("Authorization", "Bearer "+os.Getenv("XAI_API_KEY"))
+  resp, err := http.DefaultClient.Do(req)
+  if err != nil { panic(err) }
+  defer resp.Body.Close()
+  body, _ := ioutil.ReadAll(resp.Body)
+  fmt.Println(resp.StatusCode, string(body))
+}</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">Java (OkHttp)</div>
+          <pre><code>OkHttpClient client = new OkHttpClient();
+Request request = new Request.Builder()
+    .url(System.getenv("XAI_API_URL") + "/devices")
+    .addHeader("Authorization", "Bearer " + System.getenv("XAI_API_KEY"))
+    .build();
+try (Response res = client.newCall(request).execute()) {
+  System.out.println(res.code());
+  System.out.println(res.body().string());
+}</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">PHP (cURL)</div>
+          <pre><code><?php
+$ch = curl_init(getenv('XAI_API_URL').'/devices');
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+  'Authorization: Bearer '.getenv('XAI_API_KEY'),
+]);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$res = curl_exec($ch);
+echo $res;
+?></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="doc-section">
+      <div class="doc-h2">设备播放文字（POST /speak）- 支持多设备</div>
+      <p class="doc-desc">支持单设备和多设备播报。请求体需要包含 <span class="kbd">text</span>（要播放的文字）与 <span class="kbd">device_id</span>（设备ID）。<span class="kbd">device_id</span> 支持字符串（单设备）或字符串数组（多设备）格式。可选参数包括 <span class="kbd">volume</span>（音量，0-100）和 <span class="kbd">endvolume</span>（播放结束后音量，0-100）。</p>
+      
+      <div class="doc-card">
+        <div class="doc-h3">🆕 多设备播报特性</div>
+        <ul>
+          <li>✅ <b>并行执行</b>：多设备任务同时启动，提高效率</li>
+          <li>✅ <b>独立任务</b>：每个设备创建独立任务ID，便于状态追踪</li>
+          <li>✅ <b>向后兼容</b>：完全兼容现有单设备API调用</li>
+          <li>✅ <b>错误隔离</b>：单个设备失败不影响其他设备播报</li>
+        </ul>
+      </div>
+      <div class="doc-grid">
+        <div class="doc-card">
+          <div class="doc-h3">curl - 单设备播报</div>
+          <pre><code>curl -s -X POST "$XAI_API_URL/speak" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $XAI_API_KEY" \
+  -d '{
+    "text": "你好，这是测试播放",
+    "device_id": "445777160",
+    "volume": 60,
+    "endvolume": 50
+  }'</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">curl - 多设备播报 🆕</div>
+          <pre><code>curl -s -X POST "$XAI_API_URL/speak" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $XAI_API_KEY" \
+  -d '{
+    "text": "紧急通知：会议将在5分钟后开始",
+    "device_id": ["445777160", "445777161", "445777162"],
+    "volume": 80
+  }'</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">Python - 单设备播报</div>
+          <pre><code>import os, requests
+url = f"{os.getenv('XAI_API_URL')}/speak"
+payload = {
+  "text": "你好，这是测试播放", 
+  "device_id": "445777160",
+  "volume": 60,
+  "endvolume": 50
+}
+headers = {
+  "Content-Type": "application/json",
+  "Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"
+}
+r = requests.post(url, json=payload, headers=headers, timeout=10)
+print(r.status_code, r.json())</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">Python - 多设备播报 🆕</div>
+          <pre><code>import os, requests
+url = f"{os.getenv('XAI_API_URL')}/speak"
+payload = {
+  "text": "紧急通知：会议将在5分钟后开始",
+  "device_id": ["445777160", "445777161", "445777162"],
+  "volume": 80
+}
+headers = {
+  "Content-Type": "application/json",
+  "Authorization": f"Bearer {os.getenv('XAI_API_KEY')}"
+}
+r = requests.post(url, json=payload, headers=headers, timeout=10)
+print(r.status_code, r.json())
+# 返回格式: {"task_id": ["task1", "task2", "task3"], "device_id": [...], ...}</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">Node.js (fetch)</div>
+          <pre><code>const baseURL = process.env.XAI_API_URL;
+const apiKey = process.env.XAI_API_KEY;
+
+fetch(`${baseURL}/speak`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`
+  },
+  body: JSON.stringify({ 
+    text: '你好，这是测试播放', 
+    device_id: '445777160',
+    volume: 60,
+    endvolume: 50
+  })
+}).then(r => r.json()).then(console.log).catch(console.error);</code></pre>
+        </div>
+        <div class="doc-card">
+          <div class="doc-h3">Go (net/http)</div>
+          <pre><code>package main
+import (
+  "bytes"; "fmt"; "net/http"; "os"; "io/ioutil"
+)
+func main(){
+  url := os.Getenv("XAI_API_URL") + "/speak"
+  body := []byte(`{"text":"你好，这是测试播放","device_id":"445777160"}`)
+  req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+  req.Header.Set("Content-Type","application/json")
+  req.Header.Set("Authorization","Bearer "+os.Getenv("XAI_API_KEY"))
+  resp, err := http.DefaultClient.Do(req)
+  if err != nil { panic(err) }
+  defer resp.Body.Close(); b,_ := ioutil.ReadAll(resp.Body); fmt.Println(string(b))
+}</code></pre>
+        </div>
+      </div>
+      <div class="tip">提示：API Key 也支持使用 <span class="kbd">ApiKey xai_sk_...</span> 或直接 <span class="kbd">xai_sk_...</span> 放在 Authorization 头中。</div>
+      
+      <div class="doc-card">
+        <div class="doc-h3">响应格式说明</div>
+        <div class="doc-h4">单设备播报响应</div>
+        <pre><code>{
+  "task_id": "speak_a1b2c3d4_1703123456",
+  "device_id": "445777160",
+  "estimated_duration": 4.2
+}</code></pre>
+        
+        <div class="doc-h4">多设备播报响应 🆕</div>
+        <pre><code>{
+  "task_id": [
+    "speak_a1b2c3d4_1703123456",
+    "speak_e5f6g7h8_1703123457",
+    "speak_i9j0k1l2_1703123458"
+  ],
+  "device_id": [
+    "445777160",
+    "445777161", 
+    "445777162"
+  ],
+  "estimated_duration": 6.8
+}</code></pre>
+        <div class="tip">多设备播报时，每个设备都会生成独立的任务ID，可以分别查询各自的播放状态。</div>
+      </div>
+    </section>
+
+    <section class="doc-section">
+      <div class="doc-h2">音量控制参数说明</div>
+      <div class="doc-card">
+        <div class="doc-h3">参数详情</div>
+        <ul>
+          <li><b>volume</b>（可选）：播放时的音量，取值范围 0-100，默认为设备当前音量</li>
+          <li><b>endvolume</b>（可选）：播放结束后恢复的音量，取值范围 0-100，默认保持播放时音量</li>
+        </ul>
+        <div class="tip">使用场景：可以在播放重要通知时临时提高音量，播放结束后自动恢复到合适的音量。</div>
+      </div>
+    </section>
+
+    <section class="doc-section doc-card">
+      <div class="doc-h2">错误处理</div>
+      <ul>
+        <li><b>401 Unauthorized</b>：API Key 无效或缺失。请检查 <span class="kbd">Authorization</span> 头。</li>
+        <li><b>403 Forbidden</b>：权限不足。请在平台里为密钥开启对应权限（如 <span class="kbd">get_devices</span>、<span class="kbd">speak</span>）。</li>
+        <li><b>429 Too Many Requests</b>：请求过于频繁。请降低调用频率或联系管理员。</li>
+      </ul>
+    </section>
+
+    <section class="doc-section doc-card">
+      <div class="doc-h2">常见问题</div>
+      <ul>
+        <li><b>设备ID如何获取？</b> 通过 <span class="kbd">GET /devices</span> 接口获取。也可在“设备管理”页面一键复制。</li>
+        <li><b>为何不建议前端直接用 API Key？</b> API Key 与账户绑定，具备权限，暴露风险高。建议仅用于后端对后端（B2B/BFF）。</li>
+        <li><b>是否支持 HTTPS？</b> 生产环境强烈建议启用 HTTPS 并配置 CORS 白名单。</li>
+      </ul>
+    </section>
+
+  </div>
+
+  <script src="../js/utils.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+  <script>
+    // 设置右上角用户名和导航栏状态
+    document.addEventListener('DOMContentLoaded', () => {
+      const currentUser = window.apiClient.getCurrentUser();
+      if (currentUser) {
+        document.getElementById('userDisplayName').textContent = currentUser.display_name || currentUser.username;
+      } else {
+        document.getElementById('userDisplayName').textContent = '未登录';
+      }
+      
+      // 设置当前页面导航栏状态
+      const currentPath = window.location.pathname;
+      const navLinks = document.querySelectorAll('.navbar-link');
+      navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') && currentPath.includes(link.getAttribute('href'))) {
+          link.classList.add('active');
+        }
+      });
+    });
+
+    async function logout() {
+      try {
+        await window.apiClient.logout();
+        window.notifications.success('已退出登录');
+        window.location.href = '/login';
+      } catch (e) {
+        window.apiClient.setToken(null);
+        window.apiClient.setCurrentUser(null);
+        window.location.href = '/login';
+      }
+    }
+  </script>
+</body>
+</html>
+
+

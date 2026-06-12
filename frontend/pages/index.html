@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>爱通知 - 小爱音箱消息推送统一API平台</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
+    <link rel="stylesheet" href="../css/main.css">
+    <style>
+        .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 80px 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="1" fill="%23ffffff" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .hero-logo {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .hero-title {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .hero-subtitle {
+            font-size: 1.5rem;
+            margin-bottom: 40px;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+        
+        .hero-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn-hero {
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .btn-hero.primary {
+            background: white;
+            color: #667eea;
+        }
+        
+        .btn-hero.primary:hover {
+            background: #f8f9ff;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .btn-hero.secondary {
+            background: transparent;
+            color: white;
+            border-color: white;
+        }
+        
+        .btn-hero.secondary:hover {
+            background: white;
+            color: #667eea;
+            transform: translateY(-2px);
+        }
+        
+        .features-section {
+            padding: 80px 0;
+            background: #f8f9fa;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 60px;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 40px 30px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: white;
+        }
+        
+        .feature-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .feature-desc {
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .roadmap-section {
+            padding: 80px 0;
+            background: white;
+        }
+        
+        .roadmap-timeline {
+            max-width: 800px;
+            margin: 60px auto 0;
+        }
+        
+        .roadmap-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 40px;
+            position: relative;
+        }
+        
+        .roadmap-item::before {
+            content: '';
+            position: absolute;
+            left: 25px;
+            top: 60px;
+            bottom: -40px;
+            width: 2px;
+            background: #e9ecef;
+        }
+        
+        .roadmap-item:last-child::before {
+            display: none;
+        }
+        
+        .roadmap-status {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: white;
+            margin-right: 30px;
+            flex-shrink: 0;
+        }
+        
+        .roadmap-status.completed {
+            background: #28a745;
+        }
+        
+        .roadmap-status.planned {
+            background: #6c757d;
+        }
+        
+        .roadmap-content {
+            flex: 1;
+        }
+        
+        .roadmap-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .roadmap-desc {
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .cta-section {
+            padding: 80px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+        }
+        
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .section-subtitle {
+            font-size: 1.2rem;
+            text-align: center;
+            color: #666;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2.5rem;
+            }
+            
+            .hero-subtitle {
+                font-size: 1.2rem;
+            }
+            
+            .hero-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 英雄区域 -->
+    <section class="hero-section">
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-logo">
+                    <img src="../assets/logo.svg" alt="爱通知Logo" width="80" height="80">
+                </div>
+                <h1 class="hero-title">爱通知</h1>
+                <p class="hero-subtitle">小爱音箱消息推送统一API平台</p>
+                <div class="hero-buttons">
+                    <a href="/register" class="btn-hero primary">立即开始</a>
+                    <a href="/login" class="btn-hero secondary">用户登录</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 功能特色 -->
+    <section class="features-section">
+        <div class="container">
+            <h2 class="section-title">平台特色</h2>
+            <p class="section-subtitle">为开发者提供简单易用的消息推送API服务，支持多种推送渠道</p>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🎤</div>
+                    <h3 class="feature-title">小爱音箱语音播报</h3>
+                    <p class="feature-desc">通过API控制小爱音箱播放自定义文字内容，支持多设备管理和批量操作</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">🔑</div>
+                    <h3 class="feature-title">安全的API密钥</h3>
+                    <p class="feature-desc">提供细粒度权限控制的API密钥管理，支持使用限制和有效期设置</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3 class="feature-title">实时统计分析</h3>
+                    <p class="feature-desc">详细的API调用统计和设备状态监控，帮助您优化使用效果</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">🚀</div>
+                    <h3 class="feature-title">简单易用</h3>
+                    <p class="feature-desc">RESTful API设计，完善的开发文档，快速集成到您的项目中</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3 class="feature-title">企业级安全</h3>
+                    <p class="feature-desc">多层安全防护，数据加密存储，确保您的账户和设备信息安全</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3 class="feature-title">高性能稳定</h3>
+                    <p class="feature-desc">基于FastAPI构建，支持高并发请求，99.9%的服务可用性</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 开发路线图 -->
+    <section class="roadmap-section">
+        <div class="container">
+            <h2 class="section-title">开发路线图</h2>
+            <p class="section-subtitle">我们正在不断扩展平台功能，为您提供更多消息推送渠道</p>
+            
+            <div class="roadmap-timeline">
+                <div class="roadmap-item">
+                    <div class="roadmap-status completed">✓</div>
+                    <div class="roadmap-content">
+                        <h3 class="roadmap-title">小爱音箱语音播报</h3>
+                        <p class="roadmap-desc">支持小米生态下的小爱音箱设备，通过API实现文字转语音播报功能</p>
+                    </div>
+                </div>
+                
+                <div class="roadmap-item">
+                    <div class="roadmap-status planned">📧</div>
+                    <div class="roadmap-content">
+                        <h3 class="roadmap-title">电子邮箱推送</h3>
+                        <p class="roadmap-desc">支持SMTP邮件发送，可配置多个邮箱服务商，支持HTML邮件模板</p>
+                    </div>
+                </div>
+                
+                <div class="roadmap-item">
+                    <div class="roadmap-status planned">💬</div>
+                    <div class="roadmap-content">
+                        <h3 class="roadmap-title">钉钉群机器人</h3>
+                        <p class="roadmap-desc">集成钉钉群机器人API，支持文本、链接、Markdown等多种消息格式</p>
+                    </div>
+                </div>
+                
+                <div class="roadmap-item">
+                    <div class="roadmap-status planned">🏢</div>
+                    <div class="roadmap-content">
+                        <h3 class="roadmap-title">企业微信机器人</h3>
+                        <p class="roadmap-desc">支持企业微信群机器人消息推送，适合企业内部通知场景</p>
+                    </div>
+                </div>
+                
+                <div class="roadmap-item">
+                    <div class="roadmap-status planned">🐦</div>
+                    <div class="roadmap-content">
+                        <h3 class="roadmap-title">飞书群机器人</h3>
+                        <p class="roadmap-desc">集成飞书群机器人，支持富文本消息和交互式卡片消息</p>
+                    </div>
+                </div>
+                
+                <div class="roadmap-item">
+                    <div class="roadmap-status planned">🔗</div>
+                    <div class="roadmap-content">
+                        <h3 class="roadmap-title">Webhook推送</h3>
+                        <p class="roadmap-desc">通用Webhook接口，支持自定义HTTP请求，集成任意第三方服务</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 行动号召 -->
+    <section class="cta-section">
+        <div class="container">
+            <h2 class="section-title" style="color: white;">开始使用爱通知</h2>
+            <p class="section-subtitle" style="color: rgba(255,255,255,0.9); margin-bottom: 40px;">注册账户，获取API密钥，几分钟内集成到您的项目</p>
+            <div class="hero-buttons">
+                <a href="/register" class="btn-hero primary">免费注册</a>
+                <a href="/docs-page" class="btn-hero secondary">查看文档</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3 class="footer-title">爱通知</h3>
+                    <p class="footer-desc">专业的小爱音箱消息推送统一API平台，为开发者提供简单易用的消息推送服务。</p>
+                </div>
+                
+                <div class="footer-section">
+                    <h4 class="footer-subtitle">联系我们</h4>
+                    <div class="contact-info">
+                        <div class="contact-item">
+                            <span class="contact-icon">📧</span>
+                            <span class="contact-text">fakai7737@163.com</span>
+                        </div>
+                        <div class="contact-item">
+                            <span class="contact-icon">💬</span>
+                            <span class="contact-text">微信号：shannengkeji</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="footer-section">
+                    <h4 class="footer-subtitle">平台信息</h4>
+                    <div class="platform-info">
+                        <p>版本：v1.0.0</p>
+                        <p>服务状态：正常运行</p>
+                        <p>API版本：v1</p>
+                        <p>支持设备：小爱音箱系列</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>&copy; 2024 爱通知平台. 保留所有权利.</p>
+            </div>
+        </div>
+    </footer>
+
+    <style>
+        .footer {
+            background: #1a1a1a;
+            color: #ffffff;
+            padding: 60px 0 20px;
+            margin-top: 40px;
+        }
+        
+        .footer-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+        
+        .footer-section h3.footer-title {
+            color: #667eea;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        .footer-section h4.footer-subtitle {
+            color: #ffffff;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .footer-desc {
+            color: #cccccc;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .contact-info, .platform-info {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #cccccc;
+        }
+        
+        .contact-icon {
+            font-size: 1.2rem;
+        }
+        
+        .platform-info p {
+            color: #cccccc;
+            margin: 5px 0;
+        }
+        
+        .footer-bottom {
+            border-top: 1px solid #333;
+            padding-top: 20px;
+            text-align: center;
+            color: #999;
+        }
+        
+        @media (max-width: 768px) {
+            .footer-content {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+        }
+    </style>
+
+    <script src="../js/utils.js"></script>
+    <script>
+        // 简单的页面动画
+        document.addEventListener('DOMContentLoaded', function() {
+            // 为特色卡片添加进入动画
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+            
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }
+                });
+            }, observerOptions);
+            
+            // 观察所有特色卡片
+            document.querySelectorAll('.feature-card').forEach(card => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(30px)';
+                card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                observer.observe(card);
+            });
+            
+            // 观察路线图项目
+            document.querySelectorAll('.roadmap-item').forEach((item, index) => {
+                item.style.opacity = '0';
+                item.style.transform = 'translateX(-30px)';
+                item.style.transition = `opacity 0.6s ease ${index * 0.1}s, transform 0.6s ease ${index * 0.1}s`;
+                observer.observe(item);
+            });
+        });
+    </script>
+</body>
+</html>
