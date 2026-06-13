@@ -279,13 +279,24 @@ class AnalyticsService:
                 conditions.append(ApiCallLog.endpoint == params.endpoint)
             
             # 按端点分组的性能统计
+            # percentile_cont 仅 PostgreSQL 支持；SQLite/MySQL 降级占位避免报错
+            from app.database import engine as _engine
+            _use_pct = _engine.dialect.name in ('postgresql', 'postgres')
+            if _use_pct:
+                _p50 = func.percentile_cont(0.5).within_group(ApiCallLog.response_time_ms)
+                _p95 = func.percentile_cont(0.95).within_group(ApiCallLog.response_time_ms)
+                _p99 = func.percentile_cont(0.99).within_group(ApiCallLog.response_time_ms)
+            else:
+                _p50 = func.avg(ApiCallLog.response_time_ms)
+                _p95 = func.max(ApiCallLog.response_time_ms)
+                _p99 = func.max(ApiCallLog.response_time_ms)
             stmt = (
                 select(
                     ApiCallLog.endpoint,
                     func.avg(ApiCallLog.response_time_ms).label('avg_response_time'),
-                    func.percentile_cont(0.5).within_group(ApiCallLog.response_time_ms).label('p50_response_time'),
-                    func.percentile_cont(0.95).within_group(ApiCallLog.response_time_ms).label('p95_response_time'),
-                    func.percentile_cont(0.99).within_group(ApiCallLog.response_time_ms).label('p99_response_time'),
+                    _p50.label('p50_response_time'),
+                    _p95.label('p95_response_time'),
+                    _p99.label('p99_response_time'),
                     func.min(ApiCallLog.response_time_ms).label('min_response_time'),
                     func.max(ApiCallLog.response_time_ms).label('max_response_time'),
                     func.count(ApiCallLog.id).label('total_calls')
@@ -894,11 +905,18 @@ class AnalyticsService:
     ) -> List[TimeSeriesDataPoint]:
         """获取时间序列数据"""
         try:
-            # 根据分组类型确定时间间隔
-            if group_by == GroupByType.HOUR:
-                time_bucket = func.date_format(ApiCallLog.created_at, '%Y-%m-%d %H:00:00')
-            else:  # DAY
-                time_bucket = func.date_format(ApiCallLog.created_at, '%Y-%m-%d 00:00:00')
+            # 时间分桶：按数据库方言生成，统一输出 'YYYY-MM-DD HH:00:00' / 'YYYY-MM-DD 00:00:00'
+            from app.database import engine as _engine
+            _dialect = _engine.dialect.name
+            _hour = (group_by == GroupByType.HOUR)
+            _fmt = '%Y-%m-%d %H:00:00' if _hour else '%Y-%m-%d 00:00:00'
+            if _dialect == 'sqlite':
+                time_bucket = func.strftime(_fmt, ApiCallLog.created_at)
+            elif _dialect in ('postgresql', 'postgres'):
+                _pgfmt = 'YYYY-MM-DD HH24:00:00' if _hour else 'YYYY-MM-DD 00:00:00'
+                time_bucket = func.to_char(ApiCallLog.created_at, _pgfmt)
+            else:  # mysql 及其它
+                time_bucket = func.date_format(ApiCallLog.created_at, _fmt)
             
             # 使用MySQL兼容的时间分组和条件统计
             stmt = (

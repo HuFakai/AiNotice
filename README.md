@@ -4,7 +4,8 @@
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com)
-[![MySQL](https://img.shields.io/badge/MySQL-8.0+-orange.svg)](https://mysql.com)
+[![SQLite](https://img.shields.io/badge/SQLite-default-003B57.svg)](https://sqlite.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-supported-336791.svg)](https://postgresql.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## 🚀 功能特性
@@ -27,7 +28,7 @@
 
 ### 环境要求
 - Python 3.9+
-- MySQL 8.0+
+- 数据库：默认 **SQLite**（无需安装，开箱即用）；可选 **PostgreSQL** / **MySQL**
 - 小米账户 (用于设备控制)
 
 ### 安装依赖
@@ -128,12 +129,18 @@ curl -X POST http://localhost:8000/api/v1/speak \
 
 ### 环境变量
 ```bash
-# 数据库配置
-DB_HOST=your_mysql_host
-DB_PORT=3306
-DB_USER=your_username
-DB_PASSWORD=your_password
-DB_NAME=miapi
+# 数据库配置（默认 SQLite，开箱即用，无需外部数据库）
+DB_TYPE=sqlite
+DB_PATH=data/miapi.db
+
+# 切换 PostgreSQL（需 pip install asyncpg）：
+# DB_TYPE=postgresql
+# DB_HOST=localhost
+# DB_PORT=5432
+# DB_USER=miapi
+# DB_PASSWORD=your_password
+# DB_NAME=miapi
+# 或直接：DATABASE_URL=postgresql+asyncpg://miapi:your_password@localhost:5432/miapi
 
 # JWT配置
 JWT_SECRET_KEY=your-super-secret-key

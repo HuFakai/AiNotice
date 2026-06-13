@@ -41,9 +41,9 @@ class UserActivity(Base):
 
     # 索引
     __table_args__ = (
-        Index("idx_user_id", "user_id"),
+        Index("idx_user_activities_user_id", "user_id"),
         Index("idx_activity_type", "activity_type"),
-        Index("idx_created_at", "created_at"),
+        Index("idx_user_activities_created_at", "created_at"),
         Index("idx_activity_user_type", "user_id", "activity_type"),
     )
 

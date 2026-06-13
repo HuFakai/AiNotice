@@ -19,6 +19,12 @@ env/
 logs/
 *.log
 
+# ===== 本地数据库文件（SQLite 默认数据目录）=====
+data/
+*.db
+*.sqlite
+*.sqlite3
+
 # ===== 依赖与构建产物 =====
 node_modules/
 dist/

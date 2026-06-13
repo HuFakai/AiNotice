@@ -4,6 +4,8 @@
 """
 
 import asyncio
+import os
+from urllib.parse import quote_plus
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
@@ -19,26 +21,56 @@ class Base(DeclarativeBase):
     pass
 
 
+def build_database_url() -> str:
+    """根据配置构造 SQLAlchemy 异步连接串（默认 SQLite，可切换 PostgreSQL/MySQL）"""
+    # 1) 显式完整连接串优先（便于一键切换）
+    if settings.database_url:
+        return settings.database_url
+
+    db_type = (settings.db_type or "sqlite").lower()
+
+    if db_type == "sqlite":
+        path = settings.db_path or "data/miapi.db"
+        if not os.path.isabs(path):
+            project_root = os.path.dirname(os.path.dirname(__file__))
+            path = os.path.join(project_root, path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return f"sqlite+aiosqlite:///{path}"
+
+    user = quote_plus(settings.db_user or "")
+    pwd = quote_plus(settings.db_password or "")
+    host = settings.db_host or "localhost"
+
+    if db_type in ("postgresql", "postgres", "pg"):
+        port = settings.db_port or 5432
+        return f"postgresql+asyncpg://{user}:{pwd}@{host}:{port}/{settings.db_name}"
+
+    if db_type == "mysql":
+        port = settings.db_port or 3306
+        return f"mysql+aiomysql://{user}:{pwd}@{host}:{port}/{settings.db_name}?charset=utf8mb4"
+
+    raise ValueError(f"不支持的数据库类型: {db_type}（可选 sqlite/postgresql/mysql）")
+
+
 # 创建异步数据库引擎
 def create_database_engine():
-    """创建数据库引擎"""
-    database_url = (
-        f"mysql+aiomysql://{settings.db_user}:{settings.db_password}"
-        f"@{settings.db_host}:{settings.db_port}/{settings.db_name}"
-        f"?charset=utf8mb4"
-    )
+    """创建数据库引擎（按方言选择连接池参数）"""
+    database_url = build_database_url()
+    is_sqlite = database_url.startswith("sqlite")
 
-    engine = create_async_engine(
-        database_url,
-        echo=settings.db_echo,  # 是否输出SQL语句
-        pool_size=settings.db_pool_size,  # 连接池大小
-        max_overflow=settings.db_max_overflow,  # 连接池溢出大小
-        pool_timeout=settings.db_pool_timeout,  # 连接超时时间
-        pool_recycle=settings.db_pool_recycle,  # 连接回收时间
-        pool_pre_ping=True,  # 连接前ping测试
-    )
+    engine_kwargs = {"echo": settings.db_echo, "pool_pre_ping": True}
+    if is_sqlite:
+        # SQLite 不使用 QueuePool 的 size/overflow 参数；允许跨线程复用连接
+        engine_kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        engine_kwargs.update(
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            pool_timeout=settings.db_pool_timeout,
+            pool_recycle=settings.db_pool_recycle,
+        )
 
-    return engine
+    return create_async_engine(database_url, **engine_kwargs)
 
 
 # 全局数据库引擎
@@ -66,15 +98,17 @@ async def get_database_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_database():
-    """初始化数据库连接"""
+    """初始化数据库连接，并按模型自动建表（SQLite/PostgreSQL 开箱即用）"""
     try:
-        # 测试数据库连接
-        async with engine.begin() as conn:
-            # 执行简单查询测试连接
-            result = await conn.execute(text("SELECT 1"))
-            logger.info("数据库连接测试成功")
+        # 确保所有 ORM 模型已注册到 Base.metadata
+        import app.models  # noqa: F401
 
-        logger.info(f"数据库初始化成功 - {settings.db_host}:{settings.db_port}/{settings.db_name}")
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+            # 自动创建缺失的表（已存在则跳过，幂等）
+            await conn.run_sync(Base.metadata.create_all)
+
+        logger.info(f"数据库初始化成功 - {engine.url.render_as_string(hide_password=True)}")
         return True
 
     except Exception as e:
@@ -92,35 +126,41 @@ async def close_database():
 
 
 async def check_database_health() -> dict:
-    """检查数据库健康状态"""
+    """检查数据库健康状态（方言自适应）"""
     try:
+        dialect = engine.dialect.name
         async with engine.begin() as conn:
-            # 检查连接
             await conn.execute(text("SELECT 1"))
 
-            # 获取数据库信息
-            result = await conn.execute(text("SELECT VERSION() as version"))
-            version = result.scalar()
+            # 版本信息（不同方言查询不同）
+            version = dialect
+            try:
+                if dialect == "sqlite":
+                    version = (await conn.execute(text("SELECT sqlite_version()"))).scalar()
+                else:
+                    version = (await conn.execute(text("SELECT version()"))).scalar()
+            except Exception:
+                pass
 
-            # 获取连接池状态
+        # 连接池状态（尽力而为；不同池类型方法可能缺失）
+        pool_status = {}
+        try:
             pool = engine.pool
-            pool_status = {
-                "size": pool.size(),
-                "checked_in": pool.checkedin(),
-                "checked_out": pool.checkedout(),
-                "overflow": pool.overflow(),
-                "invalid": pool.invalid(),
-            }
+            for key in ("size", "checkedin", "checkedout", "overflow"):
+                fn = getattr(pool, key, None)
+                if callable(fn):
+                    pool_status[key] = fn()
+        except Exception:
+            pass
 
-            return {
-                "status": "healthy",
-                "database": settings.db_name,
-                "host": settings.db_host,
-                "port": settings.db_port,
-                "version": version,
-                "pool": pool_status,
-                "connection": "active",
-            }
+        return {
+            "status": "healthy",
+            "dialect": dialect,
+            "database": settings.db_name,
+            "version": version,
+            "pool": pool_status,
+            "connection": "active",
+        }
 
     except Exception as e:
         logger.error(f"数据库健康检查失败: {e}")

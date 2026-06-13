@@ -58,10 +58,10 @@ class Device(Base):
 
     # 索引和约束
     __table_args__ = (
-        Index("idx_user_id", "user_id"),
-        Index("idx_device_id", "device_id"),
+        Index("idx_devices_user_id", "user_id"),
+        Index("idx_devices_device_id", "device_id"),
         Index("idx_is_online", "is_online"),
-        Index("idx_mi_username", "mi_username"),
+        Index("idx_devices_mi_username", "mi_username"),
         Index("idx_device_user_status", "user_id", "is_online"),
         Index("idx_user_mi_username", "user_id", "mi_username"),
         # 确保同一用户下设备ID唯一

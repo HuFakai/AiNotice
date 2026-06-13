@@ -65,8 +65,8 @@ class MiAccount(Base):
 
     # 索引
     __table_args__ = (
-        Index("idx_user_id", "user_id"),
-        Index("idx_mi_username", "mi_username"),
+        Index("idx_mi_accounts_user_id", "user_id"),
+        Index("idx_mi_accounts_mi_username", "mi_username"),
         Index("idx_sync_status", "sync_status"),
     )
 

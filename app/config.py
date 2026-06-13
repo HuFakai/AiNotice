@@ -27,9 +27,19 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, description="API服务器端口")
     api_debug: bool = Field(default=False, description="是否开启调试模式")
 
-    # 数据库配置（敏感值必须通过 .env 注入，源码不保留真实凭据）
+    # 数据库配置
+    # 数据库类型：sqlite(默认，开箱即用) / postgresql / mysql
+    db_type: str = Field(default="sqlite", description="数据库类型: sqlite/postgresql/mysql")
+    # 完整 SQLAlchemy 连接串（可选）。设置后优先于以上分项，便于一键切换，例如：
+    #   PostgreSQL: postgresql+asyncpg://user:pass@host:5432/miapi
+    #   MySQL:      mysql+aiomysql://user:pass@host:3306/miapi?charset=utf8mb4
+    database_url: Optional[str] = Field(default=None, description="完整数据库连接串(设置后优先)")
+    # SQLite 文件路径（db_type=sqlite 时生效，相对路径以项目根为基准）
+    db_path: str = Field(default="data/miapi.db", description="SQLite 数据库文件路径")
+
+    # 以下仅在 db_type 为 postgresql / mysql 时使用（敏感值通过 .env 注入）
     db_host: str = Field(default="localhost", description="数据库主机地址")
-    db_port: int = Field(default=3306, description="数据库端口")
+    db_port: Optional[int] = Field(default=None, description="数据库端口(默认 PG=5432, MySQL=3306)")
     db_user: str = Field(default="miapi", description="数据库用户名")
     db_password: str = Field(default="", description="数据库密码（请在 .env 中配置）")
     db_name: str = Field(default="miapi", description="数据库名称")

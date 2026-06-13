@@ -71,11 +71,11 @@ class SpeakTask(Base):
 
     # 索引
     __table_args__ = (
-        Index("idx_user_id", "user_id"),
-        Index("idx_device_id", "device_id"),
+        Index("idx_speak_tasks_user_id", "user_id"),
+        Index("idx_speak_tasks_device_id", "device_id"),
         Index("idx_task_id", "task_id"),
         Index("idx_status", "status"),
-        Index("idx_created_at", "created_at"),
+        Index("idx_speak_tasks_created_at", "created_at"),
         Index("idx_task_user_status", "user_id", "status"),
     )
 

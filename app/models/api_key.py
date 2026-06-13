@@ -52,7 +52,7 @@ class ApiKey(Base):
 
     # 索引
     __table_args__ = (
-        Index("idx_user_id", "user_id"),
+        Index("idx_api_keys_user_id", "user_id"),
         Index("idx_api_key", "api_key"),
         Index("idx_is_active", "is_active"),
         Index("idx_expires_at", "expires_at"),

@@ -60,7 +60,7 @@ class User(Base):
     __table_args__ = (
         Index("idx_username", "username"),
         Index("idx_email", "email"),
-        Index("idx_created_at", "created_at"),
+        Index("idx_users_created_at", "created_at"),
         Index("idx_user_created_at", "id", "created_at"),
     )
 
