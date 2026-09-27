@@ -52,9 +52,22 @@ class Settings(BaseSettings):
     db_pool_recycle: int = Field(default=3600, description="连接回收时间")
 
     # JWT配置（生产环境务必在 .env 中设置强随机 jwt_secret_key）
+    # 若启动时检测到缺失/占位符/弱值，会自动生成强随机值并写回 .env（见 app/utils/security_keys.py）
     jwt_secret_key: str = Field(default="CHANGE_ME_IN_ENV", description="JWT密钥（请在 .env 中配置强随机值）")
-    jwt_algorithm: str = Field(default="HS256", description="JWT算法")
+    jwt_algorithm: str = Field(default="HS256", description="JWT算法(仅允许HS256/HS384/HS512)")
     jwt_expire_hours: int = Field(default=24, description="JWT过期时间(小时)")
+
+    # 数据加密密钥：与 JWT 密钥分离，用于小米密码/通知配置/pass_token 的 Fernet 加密。
+    # 缺省时沿用 jwt_secret_key 派生（历史兼容）；启动期弱密钥自动修复时自动生成并写入 .env
+    encryption_key: Optional[str] = Field(default=None, description="数据加密密钥(独立于JWT，建议≥32字节随机值)")
+    encryption_legacy_password: Optional[str] = Field(default=None, description="历史加密回退密钥(自动迁移时写入，勿手动清除)")
+
+    # 出站请求安全：通知 webhook/SMTP 目标默认禁止私网/保留地址（防 SSRF）。
+    # 自托管内网 SMTP/机器人场景可设为 true 放开
+    outbound_allow_private: bool = Field(default=False, description="是否允许出站访问私网地址(自托管场景)")
+
+    # 反向代理：默认不信任 X-Forwarded-For（防伪造审计IP）；部署在可信反代后设为 true
+    trust_proxy_headers: bool = Field(default=False, description="是否信任 X-Forwarded-For/X-Real-IP 头")
 
     # 安全配置
     password_min_length: int = Field(default=8, description="密码最小长度")
@@ -80,6 +93,7 @@ class Settings(BaseSettings):
     speak_tasks_retention_days: int = Field(default=7, description="播放任务记录保留天数")
     user_activities_retention_days: int = Field(default=30, description="用户活动记录保留天数")
     log_files_retention_days: int = Field(default=7, description="日志文件保留天数")
+    notification_logs_retention_days: int = Field(default=30, env="NOTIFICATION_LOGS_RETENTION_DAYS", description="通知日志保留天数")
 
     class Config:
         env_file = ".env"

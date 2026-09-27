@@ -23,7 +23,7 @@ from app.schemas.analytics import (
     ApiCallLogResponse, CallLogsListResponse,
     AnalyticsOverviewResponse, EndpointAnalyticsResponse,
     PerformanceAnalyticsResponse, QuotaAnalyticsResponse,
-    RealTimeStatsResponse, HealthCheckResponse
+    RealTimeStatsResponse
 )
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -52,25 +52,8 @@ async def get_call_logs(
             db, current_user.id, params
         )
         
-        # 转换为响应模型
-        log_responses = [
-            ApiCallLogResponse(
-                id=log.id,
-                user_id=log.user_id,
-                api_key_id=log.api_key_id,
-                endpoint=log.endpoint,
-                method=log.method,
-                status_code=log.status_code,
-                response_time_ms=log.response_time_ms,
-                request_size=log.request_size,
-                response_size=log.response_size,
-                user_agent=log.user_agent,
-                ip_address=log.ip_address,
-                error_message=log.error_message,
-                created_at=log.created_at
-            )
-            for log in logs
-        ]
+        # 转换为响应模型（schema 已配置 from_attributes=True，直接校验 ORM 对象）
+        log_responses = [ApiCallLogResponse.model_validate(log) for log in logs]
         
         return CallLogsListResponse(
             data=log_responses,
@@ -345,37 +328,5 @@ async def get_speak_devices(
         )
 
 
-@router.get("/health", response_model=HealthCheckResponse)
-async def health_check(
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    健康检查接口
-    
-    检查：
-    - 数据库连接状态
-    - 服务运行状态
-    """
-    try:
-        # 简单的数据库连接测试
-        await db.execute("SELECT 1")
-        
-        return HealthCheckResponse(
-            status="healthy",
-            timestamp=datetime.now(),
-            services={
-                "database": "healthy",
-                "analytics": "healthy"
-            }
-        )
-        
-    except Exception as e:
-        logger.error(f"健康检查失败: {e}")
-        return HealthCheckResponse(
-            status="unhealthy",
-            timestamp=datetime.now(),
-            services={
-                "database": "unhealthy",
-                "analytics": "unhealthy"
-            }
-        )
+# 说明：健康检查统一收敛到 app/main.py 中定义（/api/v1/health），
+# 本路由不再重复注册，避免与其它 router 的同名路径互相遮蔽。

@@ -5,24 +5,26 @@
 """
 
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
-from app.models.speak import SpeakRequest, SpeakResponse, SpeakStatus, DeviceInfo, DeviceListResponse
+from app.schemas.speak import SpeakRequest, SpeakResponse, SpeakStatus, DeviceInfo, DeviceListResponse
 from app.services.speak_service import speak_service
+from app.models.user import User
 from app.dependencies import (
     DatabaseSession,
     AuthenticatedUser,
     ClientIP,
     UserAgent,
     UserWithApiKey,
+    require_api_key_permission,
 )
 
-# 创建路由器
-router = APIRouter(prefix="/api/v1", tags=["语音播放"])
+# 创建路由器（统一由 main.py 追加 /api/v1 前缀，与其它 router 保持一致）
+router = APIRouter(prefix="/speak", tags=["语音播放"])
 
 
-@router.post("/speak", response_model=SpeakResponse, summary="播放文字内容（支持多设备）")
+@router.post("", response_model=SpeakResponse, summary="播放文字内容（支持多设备）")
 async def speak_text(
     request: SpeakRequest,
     db: DatabaseSession,
@@ -95,7 +97,117 @@ async def speak_text(
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
 
 
-@router.post("/speak/{device_id}", response_model=SpeakResponse, summary="指定设备播放文字")
+# ==================== 固定路径路由（必须放在 /{device_id} 之类的参数路由之前） ====================
+
+@router.get("/status/{task_id}", response_model=SpeakStatus, summary="查询播放状态")
+async def get_speak_status(
+    task_id: str,
+    current_user: AuthenticatedUser,
+):
+    """
+    查询语音播放任务状态
+
+    - **task_id**: 任务ID
+
+    返回任务的详细状态信息（仅能查询当前认证用户自己创建的任务）
+    """
+    logger.debug(f"查询任务状态: {task_id}, 用户={current_user.id}")
+
+    try:
+        status = await speak_service.get_task_status(task_id, user_id=current_user.id)
+
+        if status is None:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        return status
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"查询任务状态异常: {e}")
+        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
+
+
+@router.post("/stop", summary="停止播放")
+async def stop_speak(
+    current_user: User = Depends(require_api_key_permission("stop_speak")),
+    task_id: Optional[str] = Query(None, description="任务ID"),
+    device_id: Optional[str] = Query(None, description="设备ID"),
+):
+    """
+    停止语音播放
+
+    - **task_id**: 任务ID（可选）
+    - **device_id**: 设备ID（可选）
+
+    至少需要提供task_id或device_id中的一个
+    """
+    if not task_id and not device_id:
+        raise HTTPException(status_code=400, detail="必须提供task_id或device_id")
+
+    logger.info(f"收到停止播放请求: task_id={task_id}, device_id={device_id}, 用户={current_user.id}")
+
+    try:
+        result = await speak_service.stop_speak(
+            task_id=task_id, device_id=device_id, user_id=current_user.id
+        )
+
+        if result["success"]:
+            return {"success": True, "message": result["message"]}
+        else:
+            raise HTTPException(status_code=400, detail=result["message"])
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"停止播放异常: {e}")
+        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
+
+
+@router.get("/devices", response_model=DeviceListResponse, summary="获取设备列表")
+async def get_devices(db: DatabaseSession, current_user: AuthenticatedUser):
+    """
+    获取所有可用的小爱音箱设备列表
+
+    返回设备的基本信息和状态
+    """
+    logger.info("收到获取设备列表请求")
+
+    try:
+        devices = await speak_service.get_devices(user_id=current_user.id, db=db)
+
+        return DeviceListResponse(success=True, message=f"获取到 {len(devices)} 个设备", devices=devices, total=len(devices))
+
+    except Exception as e:
+        logger.error(f"获取设备列表异常: {e}")
+        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
+
+
+@router.post("/devices/scan", summary="扫描设备")
+async def scan_devices(current_user: User = Depends(require_api_key_permission("get_devices"))):
+    """
+    重新扫描小爱音箱设备
+
+    强制刷新设备列表缓存
+    """
+    logger.info(f"收到设备扫描请求, 用户={current_user.id}")
+
+    try:
+        # 强制刷新设备列表
+        from app.utils.mi_service import mi_service_wrapper
+
+        devices = await mi_service_wrapper.get_devices(force_refresh=True)
+
+        return {"success": True, "message": f"扫描完成，发现 {len(devices)} 个设备", "device_count": len(devices)}
+
+    except Exception as e:
+        logger.error(f"设备扫描异常: {e}")
+        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
+
+
+# ==================== 参数化路径路由（放在固定路径之后） ====================
+
+@router.post("/{device_id}", response_model=SpeakResponse, summary="指定设备播放文字")
 async def speak_text_to_device(
     device_id: str,
     request: SpeakRequest,
@@ -132,91 +244,14 @@ async def speak_text_to_device(
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
 
 
-@router.get("/speak/status/{task_id}", response_model=SpeakStatus, summary="查询播放状态")
-async def get_speak_status(task_id: str):
-    """
-    查询语音播放任务状态
-
-    - **task_id**: 任务ID
-
-    返回任务的详细状态信息
-    """
-    logger.debug(f"查询任务状态: {task_id}")
-
-    try:
-        status = await speak_service.get_task_status(task_id)
-
-        if status is None:
-            raise HTTPException(status_code=404, detail="任务不存在")
-
-        return status
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"查询任务状态异常: {e}")
-        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
-
-
-@router.post("/speak/stop", summary="停止播放")
-async def stop_speak(
-    task_id: Optional[str] = Query(None, description="任务ID"), device_id: Optional[str] = Query(None, description="设备ID")
-):
-    """
-    停止语音播放
-
-    - **task_id**: 任务ID（可选）
-    - **device_id**: 设备ID（可选）
-
-    至少需要提供task_id或device_id中的一个
-    """
-    if not task_id and not device_id:
-        raise HTTPException(status_code=400, detail="必须提供task_id或device_id")
-
-    logger.info(f"收到停止播放请求: task_id={task_id}, device_id={device_id}")
-
-    try:
-        result = await speak_service.stop_speak(task_id=task_id, device_id=device_id)
-
-        if result["success"]:
-            return {"success": True, "message": result["message"]}
-        else:
-            raise HTTPException(status_code=400, detail=result["message"])
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"停止播放异常: {e}")
-        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
-
-
-@router.get("/devices", response_model=DeviceListResponse, summary="获取设备列表")
-async def get_devices(db: DatabaseSession, current_user: AuthenticatedUser):
-    """
-    获取所有可用的小爱音箱设备列表
-
-    返回设备的基本信息和状态
-    """
-    logger.info("收到获取设备列表请求")
-
-    try:
-        devices = await speak_service.get_devices(user_id=current_user.id, db=db)
-
-        return DeviceListResponse(success=True, message=f"获取到 {len(devices)} 个设备", devices=devices, total=len(devices))
-
-    except Exception as e:
-        logger.error(f"获取设备列表异常: {e}")
-        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
-
-
-@router.get("/devices/{device_id}", response_model=DeviceInfo, summary="获取设备详情")
-async def get_device_info(device_id: str):
+@router.get("/{device_id}", response_model=DeviceInfo, summary="获取设备详情")
+async def get_device_info(device_id: str, current_user: AuthenticatedUser):
     """
     获取指定设备的详细信息
 
     - **device_id**: 设备ID
     """
-    logger.debug(f"查询设备信息: {device_id}")
+    logger.debug(f"查询设备信息: {device_id}, 用户={current_user.id}")
 
     try:
         device = await speak_service.get_device_status(device_id)
@@ -233,33 +268,11 @@ async def get_device_info(device_id: str):
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
 
 
-@router.post("/devices/scan", summary="扫描设备")
-async def scan_devices():
-    """
-    重新扫描小爱音箱设备
-
-    强制刷新设备列表缓存
-    """
-    logger.info("收到设备扫描请求")
-
-    try:
-        # 强制刷新设备列表
-        from app.utils.mi_service import mi_service_wrapper
-
-        devices = await mi_service_wrapper.get_devices(force_refresh=True)
-
-        return {"success": True, "message": f"扫描完成，发现 {len(devices)} 个设备", "device_count": len(devices)}
-
-    except Exception as e:
-        logger.error(f"设备扫描异常: {e}")
-        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
-
-
-@router.post("/devices/{device_id}/volume", summary="设置设备音量")
+@router.post("/{device_id}/volume", summary="设置设备音量")
 async def set_device_volume(
     device_id: str,
     db: DatabaseSession,
-    current_user: AuthenticatedUser,
+    current_user: User = Depends(require_api_key_permission("set_volume")),
     volume: int = Query(..., ge=0, le=100, description="音量大小(0-100)")
 ):
     """
@@ -290,10 +303,5 @@ async def set_device_volume(
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
 
 
-# 健康检查接口
-@router.get("/health", summary="健康检查")
-async def health_check():
-    """
-    API健康检查接口
-    """
-    return {"status": "healthy", "service": "miAPI", "version": "1.0.0"}
+# 说明：健康检查统一收敛到 app/main.py 中定义（/api/v1/health），
+# 本路由不再重复注册，避免与其它 router 的同名路径互相遮蔽。

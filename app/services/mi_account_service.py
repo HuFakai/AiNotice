@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import datetime, timezone
 from loguru import logger
 import asyncio
 
@@ -26,6 +26,7 @@ try:
 except Exception:  # pragma: no cover
     _MISERVICE_AVAILABLE = False
 from app.utils.encryption import encrypt_password, decrypt_password
+from app.services.mi_qr_service import generate_device_id
 import tempfile
 import os
 import sys
@@ -43,12 +44,34 @@ except ImportError as e:
     _LOGIN_MODULE_AVAILABLE = False
 
 
+def _store_pass_token(raw: Optional[str]) -> Optional[str]:
+    """pass_token 落库前加密（等价长期凭据，与密码同级别保护）"""
+    if not raw:
+        return None
+    try:
+        return encrypt_password(raw)
+    except ValueError:
+        logger.error("pass_token 加密失败，拒绝明文落库")
+        return None
+
+
+def _load_pass_token(stored: Optional[str]) -> Optional[str]:
+    """读取 pass_token：兼容历史明文行（解密失败回退原文）"""
+    if not stored:
+        return None
+    try:
+        return decrypt_password(stored)
+    except ValueError:
+        return stored
+
+
 class MiAccountService:
     """小米账户服务类"""
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.user_service = UserService(db)
+
 
     async def create_mi_account(
         self,
@@ -98,7 +121,7 @@ class MiAccountService:
                 mi_password_encrypted=encrypted_password,
                 mi_device_id=device_id,
                 mi_user_id=user_id_mi,
-                mi_pass_token=pass_token,
+                mi_pass_token=_store_pass_token(pass_token),
                 sync_status=SyncStatus.PENDING,
             )
 
@@ -267,6 +290,93 @@ class MiAccountService:
         except Exception as e:
             logger.error(f"获取小米账户失败: {e}")
             return None
+
+
+    async def create_mi_account_from_token(
+        self,
+        user_id: int,
+        mi_user_id: str,
+        mi_pass_token: str,
+        display_name: Optional[str] = None,
+        client_ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+        """
+        扫码登录落库：用扫码获取的 userId + passToken 创建（或刷新）小米账户。
+
+        与密码方式不同，这里没有密码凭据——MiAccount 会在首次 API 调用时
+        用 passToken 自动换取 serviceToken，因此 mi_password_encrypted 存空串。
+
+        Returns:
+            (是否成功, 消息, 账户数据)
+        """
+        try:
+            if not mi_user_id or not mi_pass_token:
+                return False, "扫码凭据不完整", None
+
+            # 同一用户下若已有相同小米用户ID的账户，刷新其凭据而不是重复创建
+            existing = None
+            stmt = select(MiAccount).where(and_(MiAccount.user_id == user_id, MiAccount.mi_user_id == str(mi_user_id)))
+            result = await self.db.execute(stmt)
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                existing.mi_pass_token = _store_pass_token(mi_pass_token)
+                existing.mi_device_id = generate_device_id()
+                existing.sync_status = SyncStatus.PENDING
+                existing.error_message = None
+                await self.db.commit()
+                logger.info(f"扫码登录刷新已有小米账户: {existing.mi_username} (ID: {existing.id})")
+                return True, "扫码登录成功，账户凭据已更新", {
+                    "id": existing.id,
+                    "mi_username": existing.mi_username,
+                    "sync_status": existing.sync_status.value if hasattr(existing.sync_status, "value") else str(existing.sync_status),
+                    "created_at": existing.created_at,
+                }
+
+            mi_username = (display_name or "").strip() or f"小米账号 {mi_user_id}"
+            mi_account = MiAccount(
+                user_id=user_id,
+                mi_username=mi_username,
+                mi_password_encrypted=encrypt_password(""),
+                mi_device_id=generate_device_id(),
+                mi_user_id=str(mi_user_id),
+                mi_pass_token=_store_pass_token(mi_pass_token),
+                sync_status=SyncStatus.PENDING,
+            )
+            self.db.add(mi_account)
+            await self.db.flush()
+            account_id = mi_account.id
+            account_name = mi_account.mi_username
+            await self.db.commit()
+
+            try:
+                if hasattr(self.user_service, "_log_user_activity"):
+                    await self.user_service._log_user_activity(
+                        user_id,
+                        ActivityType.MI_ACCOUNT_CREATE,
+                        f"扫码登录绑定小米账户: {account_name}",
+                        resource_type="mi_account",
+                        resource_id=account_id,
+                        client_ip=client_ip,
+                        user_agent=user_agent,
+                    )
+                    await self.db.commit()
+            except Exception as log_error:
+                logger.warning(f"记录扫码绑定活动日志失败: {log_error}")
+
+            logger.info(f"扫码登录创建小米账户成功: {account_name} (用户: {user_id})")
+            return True, "扫码登录成功，小米账户已添加", {
+                "id": account_id,
+                "mi_username": account_name,
+                "sync_status": SyncStatus.PENDING.value,
+                "created_at": datetime.now(timezone.utc),
+            }
+
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"扫码登录落库失败: {e}")
+            return False, "扫码登录处理失败，请重试", None
 
     async def sync_mi_account(self, user_id: int, account_id: int) -> Tuple[bool, str]:
         """手动同步小米账户"""
@@ -455,64 +565,69 @@ class MiAccountService:
     async def _sync_mi_account_async(self, account_id: int):
         """异步同步小米账户"""
         # 在异步任务中使用独立的数据库会话，避免会话冲突
-        from app.database import get_database_session
+        from app.database import AsyncSessionLocal
 
-        async for session in get_database_session():
+        session = AsyncSessionLocal()
+        try:
+            # 重新获取账户信息
+            stmt = select(MiAccount).where(MiAccount.id == account_id)
+            result = await session.execute(stmt)
+            mi_account = result.scalar_one_or_none()
+
+            if not mi_account:
+                logger.error(f"同步时未找到小米账户: {account_id}")
+                return
+
+            logger.info(f"开始同步小米账户: {mi_account.mi_username}")
+
             try:
-                # 重新获取账户信息
-                stmt = select(MiAccount).where(MiAccount.id == account_id)
-                result = await session.execute(stmt)
-                mi_account = result.scalar_one_or_none()
+                # 解密密码
+                mi_password = decrypt_password(mi_account.mi_password_encrypted)
 
-                if not mi_account:
-                    logger.error(f"同步时未找到小米账户: {account_id}")
-                    return
+                # 执行认证
+                auth_result = await self._authenticate_mi_account(mi_account, mi_password)
 
-                logger.info(f"开始同步小米账户: {mi_account.mi_username}")
-
-                try:
-                    # 解密密码
-                    mi_password = decrypt_password(mi_account.mi_password_encrypted)
-
-                    # 执行认证
-                    auth_result = await self._authenticate_mi_account(mi_account, mi_password)
-
-                    if auth_result["success"]:
-                        # 更新认证信息（仅在新登录验证时更新）
-                        if auth_result["message"] != "使用已存储的认证信息":
-                            mi_account.mi_device_id = auth_result["data"].get("device_id")
-                            mi_account.mi_user_id = auth_result["data"].get("user_id")
-                            mi_account.mi_pass_token = auth_result["data"].get("pass_token")
-                        mi_account.sync_status = SyncStatus.SUCCESS
-                        mi_account.error_message = None
-                        mi_account.last_sync_at = datetime.utcnow()
-
-                        # 同步设备
-                        await self._sync_devices(session, mi_account)
-
-                        logger.info(f"小米账户同步成功: {mi_account.mi_username}")
-                    else:
-                        # 同步失败
-                        mi_account.sync_status = SyncStatus.FAILED
-                        mi_account.error_message = auth_result["message"]
-                        mi_account.last_sync_at = datetime.utcnow()
-
-                        logger.error(f"小米账户认证失败: {auth_result['message']}")
-
-                    await session.commit()
-
-                except Exception as sync_error:
-                    # 同步异常
-                    mi_account.sync_status = SyncStatus.FAILED
-                    mi_account.error_message = f"同步异常: {str(sync_error)}"
+                if auth_result["success"]:
+                    # 更新认证信息（仅在新登录验证时更新）
+                    if auth_result["message"] != "使用已存储的认证信息":
+                        mi_account.mi_device_id = auth_result["data"].get("device_id")
+                        mi_account.mi_user_id = auth_result["data"].get("user_id")
+                        mi_account.mi_pass_token = _store_pass_token(auth_result["data"].get("pass_token"))
+                    mi_account.sync_status = SyncStatus.SUCCESS
+                    mi_account.error_message = None
                     mi_account.last_sync_at = datetime.utcnow()
 
-                    await session.commit()
-                    logger.error(f"小米账户同步异常: {sync_error}")
+                    # 同步设备
+                    await self._sync_devices(session, mi_account)
 
-            except Exception as e:
-                logger.error(f"异步同步小米账户失败: {e}")
+                    logger.info(f"小米账户同步成功: {mi_account.mi_username}")
+                else:
+                    # 同步失败
+                    mi_account.sync_status = SyncStatus.FAILED
+                    mi_account.error_message = auth_result["message"]
+                    mi_account.last_sync_at = datetime.utcnow()
+
+                    logger.error(f"小米账户认证失败: {auth_result['message']}")
+
+                await session.commit()
+
+            except Exception as sync_error:
+                # 同步异常
+                mi_account.sync_status = SyncStatus.FAILED
+                mi_account.error_message = f"同步异常: {str(sync_error)}"
+                mi_account.last_sync_at = datetime.utcnow()
+
+                await session.commit()
+                logger.error(f"小米账户同步异常: {sync_error}")
+
+        except Exception as e:
+            logger.error(f"异步同步小米账户失败: {e}")
+            try:
                 await session.rollback()
+            except Exception:
+                pass
+        finally:
+            await session.close()
 
     async def _authenticate_mi_account(self, mi_account: MiAccount, mi_password: str) -> Dict[str, Any]:
         """认证小米账户（使用MiServiceWrapper）"""
@@ -520,7 +635,7 @@ class MiAccountService:
             # 检查是否已有完整的认证信息，如果有则先尝试验证是否有效
             if (mi_account.mi_device_id and 
                 mi_account.mi_user_id and 
-                mi_account.mi_pass_token):
+                _load_pass_token(mi_account.mi_pass_token)):
                 logger.info(f"验证已存储的认证信息: {mi_account.mi_username}")
                 
                 # 先尝试使用已存储的认证信息进行简单验证
@@ -532,7 +647,7 @@ class MiAccountService:
                         password=mi_password,
                         device_id=mi_account.mi_device_id,
                         user_id=mi_account.mi_user_id,
-                        pass_token=mi_account.mi_pass_token,
+                        pass_token=_load_pass_token(mi_account.mi_pass_token),
                     )
                     # 尝试获取设备列表来验证认证信息是否有效
                     devices = await test_wrapper.get_devices(force_refresh=False)
@@ -543,7 +658,7 @@ class MiAccountService:
                         "data": {
                             "device_id": mi_account.mi_device_id,
                             "user_id": mi_account.mi_user_id,
-                            "pass_token": mi_account.mi_pass_token
+                            "pass_token": _load_pass_token(mi_account.mi_pass_token)
                         },
                     }
                 except Exception as verify_error:
@@ -648,7 +763,7 @@ class MiAccountService:
                 password=mi_password,
                 device_id=mi_account.mi_device_id,
                 user_id=mi_account.mi_user_id,
-                pass_token=mi_account.mi_pass_token,
+                pass_token=_load_pass_token(mi_account.mi_pass_token),
             )
 
             # 获取设备列表

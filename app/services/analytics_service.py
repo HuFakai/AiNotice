@@ -175,7 +175,7 @@ class AnalyticsService:
                 # 对于按天分组的周期，使用当天的结束时间
                 if params.period in [PeriodType.DAY_7, PeriodType.DAY_30, PeriodType.DAY_90]:
                     end_time = datetime.combine(now.date(), datetime.max.time())
-                elif params.period == PeriodType.HOURS_24:
+                elif params.period == PeriodType.HOUR_24:
                     # 24小时数据：使用当前小时的59分59秒作为结束时间，确保包含完整的当前小时数据
                     end_time = now.replace(minute=59, second=59, microsecond=999999)
                 else:
@@ -433,11 +433,14 @@ class AnalyticsService:
             alerts = []
             
             # 检查配额使用情况
+            # 注意：usage_percentage 是 Python @property（非数据库列），
+            # 因此这里必须用列表达式计算使用率；quota_limit 可能为 0，用 NULLIF 避免除零。
+            quota_usage_pct = ApiQuota.quota_used * 100.0 / func.nullif(ApiQuota.quota_limit, 0)
             quota_stmt = (
                 select(ApiQuota)
                 .where(
                     ApiQuota.user_id == user_id,
-                    ApiQuota.usage_percentage > 80
+                    quota_usage_pct > 80
                 )
             )
             quota_result = await session.execute(quota_stmt)

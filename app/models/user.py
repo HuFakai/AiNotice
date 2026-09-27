@@ -27,6 +27,8 @@ class User(Base):
     # 状态字段
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否激活")
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, comment="邮箱是否验证")
+    # 令牌版本：登出/修改密码时递增，使所有已签发 JWT 立即失效
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", comment="JWT令牌版本")
 
     # 时间字段
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
@@ -36,38 +38,39 @@ class User(Base):
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="最后登录时间")
 
     # 关系映射
+    # 统一 lazy="select"：认证热路径不连带查询整张关系图；
+    # 需要关系数据的调用方显式使用 selectinload 或聚合查询
     mi_accounts: Mapped[List["MiAccount"]] = relationship(
-        "MiAccount", back_populates="user", cascade="all, delete-orphan", lazy="select"  # 临时改为延迟加载，避免枚举冲突
+        "MiAccount", back_populates="user", cascade="all, delete-orphan", lazy="select"
     )
 
     devices: Mapped[List["Device"]] = relationship(
-        "Device", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+        "Device", back_populates="user", cascade="all, delete-orphan", lazy="select"
     )
 
     api_keys: Mapped[List["ApiKey"]] = relationship(
-        "ApiKey", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+        "ApiKey", back_populates="user", cascade="all, delete-orphan", lazy="select"
     )
 
     speak_tasks: Mapped[List["SpeakTask"]] = relationship(
-        "SpeakTask", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+        "SpeakTask", back_populates="user", cascade="all, delete-orphan", lazy="select"
     )
 
     activities: Mapped[List["UserActivity"]] = relationship(
-        "UserActivity", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+        "UserActivity", back_populates="user", cascade="all, delete-orphan", lazy="select"
     )
 
     notification_channels: Mapped[List["NotificationChannel"]] = relationship(
-        "NotificationChannel", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+        "NotificationChannel", back_populates="user", cascade="all, delete-orphan", lazy="select"
     )
 
     notification_logs: Mapped[List["NotificationLog"]] = relationship(
-        "NotificationLog", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+        "NotificationLog", back_populates="user", cascade="all, delete-orphan", lazy="select"
     )
 
     # 索引
+    # 注：idx_username / idx_email 与列上 unique=True 自动生成的唯一索引重复，已删除。
     __table_args__ = (
-        Index("idx_username", "username"),
-        Index("idx_email", "email"),
         Index("idx_users_created_at", "created_at"),
         Index("idx_user_created_at", "id", "created_at"),
     )

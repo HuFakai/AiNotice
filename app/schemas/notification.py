@@ -16,7 +16,14 @@ class NotificationSendRequest(BaseModel):
     
     title: Optional[str] = Field(default=None, description="消息标题（如邮件主题，部分通道支持）", max_length=200)
     content: str = Field(..., description="推送的消息正文内容", min_length=1)
-    recipient: Optional[str] = Field(default=None, description="具体接收对象（如特定邮箱、特定音箱设备ID，不指定则使用通道默认值）")
+    recipient: Optional[str] = Field(
+        default=None,
+        description=(
+            "具体接收对象（如特定邮箱、特定音箱设备ID，不指定则使用通道默认值）。"
+            "注意：指定 channel_id 时该字段会覆盖渠道默认目标；钉钉/飞书/企业微信/Webhook "
+            "仍会强制校验目标域名白名单。"
+        ),
+    )
     
     extra: Optional[Dict[str, Any]] = Field(default=None, description="其它通道特定参数（如小爱音箱的 volume / endvolume）")
 
@@ -34,7 +41,13 @@ class NotificationSendRequest(BaseModel):
 class NotificationSendResponse(BaseModel):
     """统一通知发送响应"""
 
-    success: bool = Field(..., description="是否发送成功")
+    success: bool = Field(
+        ...,
+        description=(
+            "是否成功。/notify/send 为异步调度，success=True 仅代表任务已受理，"
+            "真实结果请按 log_id 查询通知日志；/channels/{id}/test 为同步发送，代表真实发送结果。"
+        ),
+    )
     message: str = Field(..., description="状态或响应说明")
-    log_id: Optional[int] = Field(default=None, description="生成的通知日志记录ID")
-    detail: Optional[Any] = Field(default=None, description="底层通道返回的详细回执")
+    log_id: Optional[int] = Field(default=None, description="生成的通知日志记录ID（用于查询真实发送结果）")
+    detail: Optional[Any] = Field(default=None, description="底层通道返回的详细回执（同步发送时可用）")

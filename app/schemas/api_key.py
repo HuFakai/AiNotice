@@ -4,7 +4,7 @@ API密钥相关数据模式
 """
 
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 
@@ -16,13 +16,22 @@ class CreateApiKeyRequest(BaseModel):
     expires_in_days: Optional[int] = Field(None, description="过期天数", gt=0, le=365)
     usage_limit: Optional[int] = Field(None, description="使用限制", gt=0)
 
-    @validator("permissions")
+    @field_validator("permissions")
+    @classmethod
     def validate_permissions(cls, v):
         """验证权限配置"""
         if v is None:
             return v
 
-        valid_permissions = {"speak", "get_devices", "manage_devices", "stop_speak", "set_volume", "get_status"}
+        valid_permissions = {
+            "speak",
+            "get_devices",
+            "manage_devices",
+            "stop_speak",
+            "set_volume",
+            "get_status",
+            "send_notify",
+        }
 
         for perm in v.keys():
             if perm not in valid_permissions:
@@ -30,8 +39,8 @@ class CreateApiKeyRequest(BaseModel):
 
         return v
 
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "key_name": "生产环境密钥",
                 "permissions": {
@@ -41,11 +50,13 @@ class CreateApiKeyRequest(BaseModel):
                     "stop_speak": True,
                     "set_volume": False,
                     "get_status": True,
+                    "send_notify": True,
                 },
                 "expires_in_days": 90,
                 "usage_limit": 10000,
             }
         }
+    }
 
 
 class UpdateApiKeyRequest(BaseModel):
@@ -56,13 +67,22 @@ class UpdateApiKeyRequest(BaseModel):
     is_active: Optional[bool] = Field(None, description="是否激活")
     usage_limit: Optional[int] = Field(None, description="使用限制", gt=0)
 
-    @validator("permissions")
+    @field_validator("permissions")
+    @classmethod
     def validate_permissions(cls, v):
         """验证权限配置"""
         if v is None:
             return v
 
-        valid_permissions = {"speak", "get_devices", "manage_devices", "stop_speak", "set_volume", "get_status"}
+        valid_permissions = {
+            "speak",
+            "get_devices",
+            "manage_devices",
+            "stop_speak",
+            "set_volume",
+            "get_status",
+            "send_notify",
+        }
 
         for perm in v.keys():
             if perm not in valid_permissions:
@@ -89,8 +109,7 @@ class ApiKeyResponse(BaseModel):
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class ApiKeyCreatedResponse(BaseModel):
@@ -104,8 +123,8 @@ class ApiKeyCreatedResponse(BaseModel):
     usage_limit: Optional[int] = Field(None, description="使用限制")
     created_at: datetime = Field(..., description="创建时间")
 
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "id": 1,
                 "key_name": "生产环境密钥",
@@ -117,9 +136,11 @@ class ApiKeyCreatedResponse(BaseModel):
                     "stop_speak": True,
                     "set_volume": False,
                     "get_status": True,
+                    "send_notify": True,
                 },
                 "expires_at": "2025-05-11T10:00:00Z",
                 "usage_limit": 10000,
                 "created_at": "2025-02-11T10:00:00Z",
             }
         }
+    }

@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 from loguru import logger
 
 from app.config import get_settings
-from app.models.speak import DeviceInfo
+from app.schemas.speak import DeviceInfo
 
 
 class MockMiService:

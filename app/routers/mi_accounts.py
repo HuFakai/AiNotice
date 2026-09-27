@@ -5,10 +5,12 @@
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Path
+from fastapi.responses import Response
 from loguru import logger
 
 from app.dependencies import get_current_active_user, get_client_ip, get_user_agent, DatabaseSession
 from app.services.mi_account_service import MiAccountService
+from app.services.mi_qr_service import mi_qr_login_service
 from app.schemas.mi_account import (
     CreateMiAccountRequest,
     SimplifiedCreateMiAccountRequest,
@@ -23,8 +25,12 @@ from app.schemas.mi_account import (
     AuthenticationTestRequest,
     AuthenticationTestResponse,
     DeviceResponse,
+    QrCreateRequest,
+    QrCreateResponse,
+    QrStatusResponse,
 )
 from app.schemas.auth import SuccessResponse
+from app.models.mi_account import SyncStatus
 from app.models.user import User
 
 
@@ -167,10 +173,17 @@ async def update_mi_account(
             if not success:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
 
-        # TODO: 如果提供了新密码，更新密码
+        # 更新小米密码：重新加密落库，并标记待同步（下次同步用新凭据重新认证）
         if request.mi_password:
-            # 这里可以实现密码更新逻辑
-            pass
+            from app.utils.encryption import encrypt_password
+
+            mi_account.mi_password_encrypted = encrypt_password(request.mi_password)
+            mi_account.sync_status = SyncStatus.PENDING
+            mi_account.error_message = None
+            db.add(mi_account)
+            await db.commit()
+            logger.info(f"小米账户密码已更新: {mi_account.mi_username} (ID: {account_id})")
+            return SuccessResponse(message="小米账户密码已更新，请执行同步以验证新凭据")
 
         return SuccessResponse(message="小米账户更新成功")
 
@@ -342,6 +355,65 @@ async def get_mi_account_stats(db: DatabaseSession, current_user: User = Depends
     except Exception as e:
         logger.error(f"获取小米账户统计错误: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误")
+
+
+@router.post("/qr/create", response_model=QrCreateResponse, summary="发起扫码登录", description="创建小米账号扫码登录会话，返回二维码地址")
+async def create_qr_login(
+    request: QrCreateRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    """创建扫码登录会话"""
+    try:
+        info = await mi_qr_login_service.create_session(current_user.id, request.name)
+        return QrCreateResponse(**info)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"创建扫码登录会话失败: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="获取二维码失败，请稍后重试")
+
+
+@router.get("/qr/{session_id}/image", summary="获取扫码二维码图片", description="返回扫码登录二维码 PNG 图片")
+async def get_qr_login_image(
+    session_id: str = Path(..., description="扫码会话ID"),
+    current_user: User = Depends(get_current_active_user),
+):
+    """代理下载二维码 PNG（避免混合内容与跨域问题）"""
+    try:
+        data = await mi_qr_login_service.get_qr_image(session_id, current_user.id)
+    except Exception as e:
+        logger.error(f"下载二维码图片失败: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="二维码下载失败")
+
+    if not data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="扫码会话不存在或已过期")
+    return Response(content=data, media_type="image/png")
+
+
+@router.get("/qr/{session_id}/status", response_model=QrStatusResponse, summary="查询扫码状态", description="轮询扫码登录状态，确认后自动创建/更新小米账户")
+async def get_qr_login_status(
+    db: DatabaseSession,
+    session_id: str = Path(..., description="扫码会话ID"),
+    current_user: User = Depends(get_current_active_user),
+):
+    """轮询扫码状态；确认后自动落库（凭据加密存储，不回传前端）"""
+    result = await mi_qr_login_service.poll_status(session_id, current_user.id)
+
+    if result.get("status") == "confirmed":
+        payload = mi_qr_login_service.consume_result(session_id, current_user.id)
+        if payload:
+            mi_account_service = MiAccountService(db)
+            success, message, account_data = await mi_account_service.create_mi_account_from_token(
+                user_id=current_user.id, **payload
+            )
+            if success:
+                result["account_id"] = account_data["id"]
+                result["mi_username"] = account_data["mi_username"]
+            else:
+                result["status"] = "error"
+                result["message"] = message
+
+    return QrStatusResponse(**result)
 
 
 @router.post("/test-auth", response_model=AuthenticationTestResponse, summary="测试小米认证", description="测试小米账户认证，不保存账户信息")

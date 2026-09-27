@@ -2,6 +2,13 @@
 """
 通知服务业务逻辑
 实现通道管理及多通道消息分发
+
+安全说明：
+- 所有出站目标（webhook/钉钉/飞书/企业微信/SMTP 主机）在发送前都会经过
+  app.utils.outbound 的 SSRF 校验；校验失败会记录到 NotificationLog.error_message，
+  不会向调用方抛出 500。
+- 渠道配置以 Fernet 加密存储；更新配置时支持 "******"/null/空字符串回填旧值，
+  "__DELETE__" 显式删除字段。
 """
 
 import json
@@ -12,18 +19,53 @@ import hashlib
 import base64
 import asyncio
 import smtplib
+from concurrent.futures import ThreadPoolExecutor
 from email.mime.text import MIMEText
 from email.header import Header
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Set
+from urllib.parse import quote_plus
+
 import httpx
 from loguru import logger
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification_channel import NotificationChannel
 from app.models.notification_log import NotificationLog
 from app.schemas.notification import NotificationSendRequest, NotificationSendResponse
 from app.utils.encryption import encrypt_password, decrypt_password
+from app.utils.outbound import (
+    OFFICIAL_WEBHOOK_HOSTS,
+    validate_outbound_host,
+    validate_outbound_url,
+)
+
+
+# 后台发送任务集合：持有 task 强引用，防止被 GC 回收；完成时自动移除
+_bg_tasks: Set[asyncio.Task] = set()
+
+# SMTP 专用线程池（同步阻塞发送不占用默认 executor）
+_smtp_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="smtp")
+
+# 配置更新时的删除标记
+CONFIG_DELETE_MARKER = "__DELETE__"
+# 前端回显的掩码占位符：更新时代表“保持原值”
+CONFIG_MASK_PLACEHOLDER = "******"
+
+
+def get_pending_task_count() -> int:
+    """当前仍在执行/待执行的后台发送任务数（供测试与监控使用）"""
+    return len(_bg_tasks)
+
+
+def encode_dingtalk_sign(sign: str) -> str:
+    """
+    钉钉签名 URL 编码。
+
+    签名是 base64 字符串，包含 '+'、'/'、'=' 等字符；'+' 必须编码为 %2B，
+    否则在部分网关/客户端会被解析成空格，导致偶发 310000 签名错误。
+    """
+    return quote_plus(sign)
 
 
 class NotificationService:
@@ -65,6 +107,32 @@ class NotificationService:
         await db.refresh(channel)
         return channel
 
+    @staticmethod
+    def _merge_config_update(old_config: Dict[str, Any], new_config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        合并渠道配置更新。
+
+        规则（前端被重写后以此为准）：
+        - 值为 None / 空字符串 / "******" 的字段：保留 old_config 中旧值（未出现过则忽略）；
+        - 值为 "__DELETE__" 的字段：从结果中移除；
+        - 其余值照写；嵌套 dict（如 webhook headers）递归应用同样规则。
+        """
+        merged: Dict[str, Any] = dict(old_config or {})
+        for key, value in (new_config or {}).items():
+            if isinstance(value, str) and value == CONFIG_DELETE_MARKER:
+                merged.pop(key, None)
+                continue
+            if isinstance(value, dict):
+                old_value = merged.get(key)
+                base = old_value if isinstance(old_value, dict) else {}
+                merged[key] = NotificationService._merge_config_update(base, value)
+                continue
+            if value is None or (isinstance(value, str) and value in ("", CONFIG_MASK_PLACEHOLDER)):
+                # 回填旧值（merged 中已有旧值则保留）；若旧配置本就没有该字段则不写入
+                continue
+            merged[key] = value
+        return merged
+
     async def update_channel(
         self,
         db: AsyncSession,
@@ -75,7 +143,12 @@ class NotificationService:
         config: Optional[Dict[str, Any]] = None,
         is_active: Optional[bool] = None,
     ) -> Optional[NotificationChannel]:
-        """更新通知通道"""
+        """
+        更新通知通道。
+
+        config 采用“增量合并”语义：null/""/"******" 保持旧值，"__DELETE__" 删除字段。
+        旧配置解密失败时抛出 ValueError，由路由层返回明确错误。
+        """
         channel = await self.get_channel_by_id(db, user_id, channel_id)
         if not channel:
             return None
@@ -87,7 +160,10 @@ class NotificationService:
         if is_active is not None:
             channel.is_active = is_active
         if config is not None:
-            config_str = json.dumps(config, ensure_ascii=False)
+            # 解密失败会抛 ValueError，避免用不完整的新配置覆盖旧密钥
+            old_config = self.decrypt_channel_config(channel)
+            merged_config = self._merge_config_update(old_config, config)
+            config_str = json.dumps(merged_config, ensure_ascii=False)
             channel.config_json = encrypt_password(config_str)
 
         await db.commit()
@@ -105,20 +181,38 @@ class NotificationService:
         return True
 
     def decrypt_channel_config(self, channel: NotificationChannel) -> Dict[str, Any]:
-        """解密通道配置"""
+        """
+        解密通道配置。
+
+        Raises:
+            ValueError: 配置无法解密/解析（例如加密密钥变更或数据损坏）
+        """
         try:
             decrypted = decrypt_password(channel.config_json)
-            return json.loads(decrypted)
+            config = json.loads(decrypted)
+            if not isinstance(config, dict):
+                raise ValueError("配置内容不是 JSON 对象")
+            return config
         except Exception as e:
             logger.error(f"解密通道配置失败 (ID={channel.id}): {e}")
-            return {}
+            raise ValueError("渠道配置解密失败，请重新保存该渠道")
 
     # ==================== 发送逻辑 ====================
 
     async def send_notification(
-        self, db: AsyncSession, user_id: int, req: NotificationSendRequest
+        self,
+        db: AsyncSession,
+        user_id: int,
+        req: NotificationSendRequest,
+        wait: bool = False,
     ) -> NotificationSendResponse:
-        """统一发送通知主接口"""
+        """
+        统一发送通知主接口。
+
+        Args:
+            wait: False（默认）异步调度，立即返回并携带 log_id；
+                  True 同步执行真实发送，返回真实成败结果（测试通道场景使用）。
+        """
         channel_name = "临时发送"
         channel_type = req.channel_type
         channel_id = req.channel_id
@@ -133,11 +227,14 @@ class NotificationService:
                 return NotificationSendResponse(success=False, message="指定的通知渠道已被禁用")
             channel_name = channel.name
             channel_type = channel.channel_type
-            config = self.decrypt_channel_config(channel)
+            try:
+                config = self.decrypt_channel_config(channel)
+            except ValueError as e:
+                return NotificationSendResponse(success=False, message=str(e))
         elif not channel_type:
             return NotificationSendResponse(success=False, message="必须指定 channel_id 或 channel_type")
 
-        # 2. 确定接收人
+        # 2. 确定接收人（recipient 会覆盖渠道自身的 URL/邮箱等目标，白名单校验仍然生效）
         recipient = req.recipient
         if not recipient:
             # 根据通道配置中寻找默认接收者
@@ -147,8 +244,13 @@ class NotificationService:
                 recipient = config.get("device_id")
             elif channel_type in ("dingtalk", "feishu", "wechat", "webhook"):
                 recipient = config.get("webhook_url") or config.get("url")
+        elif channel_id and channel_type in ("dingtalk", "feishu", "wechat", "webhook"):
+            logger.warning(
+                f"调用方在指定通道(ID={channel_id})的同时传入了 recipient，将覆盖渠道默认目标；"
+                f"请确认该行为符合预期 (user_id={user_id}, channel_type={channel_type})"
+            )
 
-        # 3. 创建持久化日志
+        # 3. 创建持久化日志（先 flush 拿到 ID 再提交，保证返回值带 log_id）
         log = NotificationLog(
             user_id=user_id,
             channel_id=channel_id,
@@ -160,20 +262,80 @@ class NotificationService:
             status="pending",
         )
         db.add(log)
+        await db.flush()
+        log_id = log.id
         await db.commit()
-        await db.refresh(log)
 
-        # 4. 异步执行发送任务，避免阻塞 HTTP 请求返回
-        # 传递会话生成器创建独立 Session，或者异步执行后自己创建
-        asyncio.create_task(
-            self._execute_send_task(log.id, channel_type, config, req.title, req.content, recipient, req.extra or {})
+        # 4a. 同步模式：直接执行发送并回写日志，返回真实结果
+        if wait:
+            try:
+                success, error_msg, detail = await self._dispatch_send(
+                    log_id, channel_type, config, req.title, req.content, recipient, req.extra or {}
+                )
+            except Exception as e:
+                logger.exception(f"同步发送通知异常 (log_id={log_id}): {e}")
+                success, error_msg, detail = False, "发送过程发生异常，请查看服务端日志", None
+
+            await self._update_log_status(db, log_id, success, error_msg)
+            if success:
+                message = f"发送成功: {channel_name} ({channel_type})"
+            else:
+                message = error_msg or "发送失败"
+            return NotificationSendResponse(success=success, message=message, log_id=log_id, detail=detail)
+
+        # 4b. 异步模式：后台任务执行发送，立即返回（持有 task 引用防止被 GC）
+        task = asyncio.create_task(
+            self._execute_send_task(log_id, channel_type, config, req.title, req.content, recipient, req.extra or {})
         )
+        _bg_tasks.add(task)
+        task.add_done_callback(_bg_tasks.discard)
 
         return NotificationSendResponse(
             success=True,
             message=f"已成功调度发送任务到通道: {channel_name} ({channel_type})",
-            log_id=log.id,
+            log_id=log_id,
         )
+
+    async def _dispatch_send(
+        self,
+        log_id: int,
+        channel_type: str,
+        config: Dict[str, Any],
+        title: Optional[str],
+        content: str,
+        recipient: Optional[str],
+        extra: Dict[str, Any],
+    ) -> Tuple[bool, Optional[str], Optional[dict]]:
+        """按通道类型分发到具体发送实现，返回 (success, error_msg, detail)"""
+        if channel_type == "email":
+            success, error_msg = await self._send_email(config, title, content, recipient)
+            return success, error_msg, None
+        if channel_type == "dingtalk":
+            return await self._send_dingtalk(config, title, content, recipient)
+        if channel_type == "feishu":
+            return await self._send_feishu(config, title, content, recipient)
+        if channel_type == "wechat":
+            return await self._send_wechat(config, title, content, recipient)
+        if channel_type == "webhook":
+            return await self._send_webhook(config, title, content, recipient, extra)
+        if channel_type == "speak":
+            return await self._send_speak(log_id, config, content, recipient, extra)
+        return False, f"未支持的通道类型: {channel_type}", None
+
+    async def _update_log_status(
+        self, session: AsyncSession, log_id: int, success: bool, error_msg: Optional[str]
+    ) -> None:
+        """回写 NotificationLog 的发送结果"""
+        stmt = (
+            update(NotificationLog)
+            .where(NotificationLog.id == log_id)
+            .values(
+                status="success" if success else "failed",
+                error_message=error_msg,
+            )
+        )
+        await session.execute(stmt)
+        await session.commit()
 
     async def _execute_send_task(
         self,
@@ -185,52 +347,24 @@ class NotificationService:
         recipient: Optional[str],
         extra: Dict[str, Any],
     ):
-        """异步执行的具体发送协程"""
+        """异步执行的具体发送协程（自建独立会话）"""
         from app.database import AsyncSessionLocal
 
         # 创建一个独立的数据库会话以防冲突
         async with AsyncSessionLocal() as session:
             try:
-                success, error_msg, detail = False, None, None
-
-                if channel_type == "email":
-                    success, error_msg = await self._send_email(config, title, content, recipient)
-                elif channel_type == "dingtalk":
-                    success, error_msg, detail = await self._send_dingtalk(config, title, content, recipient)
-                elif channel_type == "feishu":
-                    success, error_msg, detail = await self._send_feishu(config, title, content, recipient)
-                elif channel_type == "wechat":
-                    success, error_msg, detail = await self._send_wechat(config, title, content, recipient)
-                elif channel_type == "webhook":
-                    success, error_msg, detail = await self._send_webhook(config, title, content, recipient, extra)
-                elif channel_type == "speak":
-                    success, error_msg, detail = await self._send_speak(log_id, config, content, recipient, extra)
-                else:
-                    error_msg = f"未支持的通道类型: {channel_type}"
+                success, error_msg, detail = await self._dispatch_send(
+                    log_id, channel_type, config, title, content, recipient, extra
+                )
 
                 # 更新日志状态
-                stmt = (
-                    update(NotificationLog)
-                    .where(NotificationLog.id == log_id)
-                    .values(
-                        status="success" if success else "failed",
-                        error_message=error_msg,
-                    )
-                )
-                await session.execute(stmt)
-                await session.commit()
+                await self._update_log_status(session, log_id, success, error_msg)
                 logger.info(f"通知日志更新成功 (ID={log_id}), 发送结果: {'成功' if success else f'失败({error_msg})'}")
 
             except Exception as e:
-                logger.error(f"异步发送任务中发生未知异常: {e}")
+                logger.exception(f"异步发送任务中发生未知异常 (log_id={log_id}): {e}")
                 try:
-                    stmt = (
-                        update(NotificationLog)
-                        .where(NotificationLog.id == log_id)
-                        .values(status="failed", error_message=str(e))
-                    )
-                    await session.execute(stmt)
-                    await session.commit()
+                    await self._update_log_status(session, log_id, False, "发送过程发生异常，请查看服务端日志")
                 except Exception as e2:
                     logger.error(f"尝试更新失败状态时出错: {e2}")
 
@@ -250,31 +384,41 @@ class NotificationService:
         if not all([smtp_host, smtp_user, smtp_password, to_address]):
             return False, "邮件发送配置缺失: 需要主机、账号、密码及接收人"
 
-        # 定义同步邮件发送阻塞任务
+        # SSRF 校验：SMTP 主机来自用户配置
+        try:
+            validate_outbound_host(smtp_host)
+        except ValueError as e:
+            return False, f"SMTP 主机安全校验失败: {e}"
+
+        # 定义同步邮件发送阻塞任务（在专用线程池中执行）
         def sync_send():
             msg = MIMEText(content, "html", "utf-8")
             msg["From"] = Header(f"Notification Center <{from_address}>", "utf-8")
             msg["To"] = Header(to_address, "utf-8")
             msg["Subject"] = Header(title or "爱通知系统通知", "utf-8")
 
+            context = ssl.create_default_context()
             use_ssl = (smtp_port == 465)
             if use_ssl:
-                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+                server_cm = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10, context=context)
             else:
-                server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
-                if smtp_port == 587:
-                    server.starttls()
+                server_cm = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
 
-            if smtp_user and smtp_password:
-                server.login(smtp_user, smtp_password)
-
-            server.sendmail(from_address, [to_address], msg.as_string())
-            server.quit()
+            with server_cm as server:
+                if not use_ssl:
+                    # 非 465 端口必须升级 TLS；失败直接报错，绝不回退明文
+                    server.ehlo()
+                    server.starttls(context=context)
+                    server.ehlo()
+                if smtp_user and smtp_password:
+                    server.login(smtp_user, smtp_password)
+                server.sendmail(from_address, [to_address], msg.as_string())
 
         try:
             logger.info(f"正在向 {to_address} 发送邮件，使用主机 {smtp_host}:{smtp_port}...")
-            # 在异步线程中执行同步阻塞操作
-            await asyncio.to_thread(sync_send)
+            # 在专用线程池中执行同步阻塞操作，避免污染默认 executor
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_smtp_executor, sync_send)
             return True, None
         except Exception as e:
             logger.error(f"邮件发送失败: {e}")
@@ -290,6 +434,12 @@ class NotificationService:
         if not webhook_url:
             return False, "缺少钉钉 Webhook 链接", None
 
+        # SSRF 校验：只允许钉钉官方域名
+        try:
+            validate_outbound_url(webhook_url, allowed_hosts=OFFICIAL_WEBHOOK_HOSTS)
+        except ValueError as e:
+            return False, f"钉钉 Webhook 安全校验失败: {e}", None
+
         # 组装签名
         params = {}
         if secret:
@@ -300,7 +450,8 @@ class NotificationService:
             hmac_code = hmac.new(secret_enc, string_to_sign_enc, digestmod=hashlib.sha256).digest()
             sign = base64.b64encode(hmac_code).decode("utf-8")
             params["timestamp"] = timestamp
-            params["sign"] = sign
+            # '+' 必须编码为 %2B，否则会被当成空格导致 310000 签名错误
+            params["sign"] = encode_dingtalk_sign(sign)
 
         # 支持 markdown 或 text
         msg_type = config.get("msg_type", "text")
@@ -321,13 +472,18 @@ class NotificationService:
             }
 
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
                 res = await client.post(webhook_url, params=params, json=payload)
-                data = res.json()
+                raw_snippet = res.text[:200]
+                if not (200 <= res.status_code < 300):
+                    return False, f"钉钉接口 HTTP {res.status_code}: {raw_snippet}", None
+                try:
+                    data = res.json()
+                except Exception:
+                    return False, f"钉钉接口响应解析失败 (HTTP {res.status_code}): {raw_snippet}", {"raw": raw_snippet}
                 if data.get("errcode") == 0:
                     return True, None, data
-                else:
-                    return False, data.get("errmsg", "钉钉接口返回失败"), data
+                return False, data.get("errmsg") or f"钉钉接口返回失败: {raw_snippet}", data
         except Exception as e:
             logger.error(f"钉钉推送异常: {e}")
             return False, str(e), None
@@ -342,8 +498,14 @@ class NotificationService:
         if not webhook_url:
             return False, "缺少飞书 Webhook 链接", None
 
+        # SSRF 校验：只允许飞书官方域名
+        try:
+            validate_outbound_url(webhook_url, allowed_hosts=OFFICIAL_WEBHOOK_HOSTS)
+        except ValueError as e:
+            return False, f"飞书 Webhook 安全校验失败: {e}", None
+
         payload: Dict[str, Any] = {}
-        
+
         # 飞书签名算法
         if secret:
             timestamp = int(time.time())
@@ -380,13 +542,19 @@ class NotificationService:
             })
 
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
                 res = await client.post(webhook_url, json=payload)
-                data = res.json()
+                raw_snippet = res.text[:200]
+                if not (200 <= res.status_code < 300):
+                    return False, f"飞书接口 HTTP {res.status_code}: {raw_snippet}", None
+                try:
+                    data = res.json()
+                except Exception:
+                    return False, f"飞书接口响应解析失败 (HTTP {res.status_code}): {raw_snippet}", {"raw": raw_snippet}
                 if data.get("code") == 0 or data.get("StatusCode") == 0:
                     return True, None, data
-                else:
-                    return False, data.get("msg", "飞书接口返回失败"), data
+                # 失败时优先取 msg（飞书业务错误）
+                return False, data.get("msg") or data.get("errmsg") or f"飞书接口返回失败: {raw_snippet}", data
         except Exception as e:
             logger.error(f"飞书推送异常: {e}")
             return False, str(e), None
@@ -399,6 +567,12 @@ class NotificationService:
 
         if not webhook_url:
             return False, "缺少企业微信 Webhook 链接", None
+
+        # SSRF 校验：只允许企业微信官方域名
+        try:
+            validate_outbound_url(webhook_url, allowed_hosts={"qyapi.weixin.qq.com"})
+        except ValueError as e:
+            return False, f"企业微信 Webhook 安全校验失败: {e}", None
 
         msg_type = config.get("msg_type", "text")
         if msg_type == "markdown":
@@ -418,13 +592,18 @@ class NotificationService:
             }
 
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
                 res = await client.post(webhook_url, json=payload)
-                data = res.json()
+                raw_snippet = res.text[:200]
+                if not (200 <= res.status_code < 300):
+                    return False, f"企业微信接口 HTTP {res.status_code}: {raw_snippet}", None
+                try:
+                    data = res.json()
+                except Exception:
+                    return False, f"企业微信接口响应解析失败 (HTTP {res.status_code}): {raw_snippet}", {"raw": raw_snippet}
                 if data.get("errcode") == 0:
                     return True, None, data
-                else:
-                    return False, data.get("errmsg", "企业微信接口返回失败"), data
+                return False, data.get("errmsg") or f"企业微信接口返回失败: {raw_snippet}", data
         except Exception as e:
             logger.error(f"企业微信推送异常: {e}")
             return False, str(e), None
@@ -442,6 +621,12 @@ class NotificationService:
         if not url:
             return False, "缺少 Webhook 回调 URL", None
 
+        # SSRF 校验：不允许内网/保留地址（可通过 settings.outbound_allow_private 放开）
+        try:
+            validate_outbound_url(url)
+        except ValueError as e:
+            return False, f"Webhook URL 安全校验失败: {e}", None
+
         method = config.get("method", "POST").upper()
         headers = config.get("headers") or {}
 
@@ -454,7 +639,7 @@ class NotificationService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
                 if method == "GET":
                     res = await client.get(url, headers=headers, params=payload)
                 else:
@@ -463,7 +648,7 @@ class NotificationService:
                 if res.status_code in (200, 201, 202, 204):
                     return True, None, {"status_code": res.status_code, "body": res.text[:200]}
                 else:
-                    return False, f"HTTP 回调失败，状态码: {res.status_code}", {"body": res.text[:200]}
+                    return False, f"HTTP 回调失败，状态码: {res.status_code}: {res.text[:200]}", {"body": res.text[:200]}
         except Exception as e:
             logger.error(f"Webhook 回调异常: {e}")
             return False, str(e), None
@@ -472,8 +657,9 @@ class NotificationService:
         self, log_id: int, config: Dict[str, Any], content: str, recipient: Optional[str], extra: Dict[str, Any]
     ) -> Tuple[bool, Optional[str], Optional[dict]]:
         """转发至小爱音箱语音播放"""
+        from app.database import AsyncSessionLocal
         from app.services.speak_service import speak_service
-        from app.models.speak import SpeakRequest
+        from app.schemas.speak import SpeakRequest
 
         device_id = recipient or config.get("device_id")
         if not device_id:
@@ -490,29 +676,24 @@ class NotificationService:
         )
 
         try:
-            # speak_service 不需要 user_id 时可为 None。为了模拟或真实认证，我们直接使用该账户的所有者
-            # 获取通道所有者 ID，以便加载对应的 MiService 实例
-            from sqlalchemy import select
-            from app.database import AsyncSessionLocal
-            
-            user_id = None
+            # 必须传入真实数据库会话：speak_text 依赖 (user_id, db) 查询该用户的设备列表，
+            # 传 db=None 会导致 get_devices 返回空列表而 100% 失败。
             async with AsyncSessionLocal() as session:
-                # 从 NotificationLog 反查所有者
-                stmt = select(NotificationLog.user_id).where(NotificationLog.id == log_id)
-                result = await session.execute(stmt)
-                user_id = result.scalar()
+                user_id = await session.scalar(
+                    select(NotificationLog.user_id).where(NotificationLog.id == log_id)
+                )
+                if not user_id:
+                    return False, "无法确定通知所属用户，语音播报已取消", None
 
-            # 调用已存在的 speak_text
-            res = await speak_service.speak_text(
-                request=speak_req,
-                user_id=user_id,
-                db=None,  # 传入 None，让其创建独立 session 并异步后台播放
-            )
-            
+                res = await speak_service.speak_text(
+                    request=speak_req,
+                    user_id=user_id,
+                    db=session,
+                )
+
             if res.success:
                 return True, None, {"task_id": res.task_id}
-            else:
-                return False, res.message, None
+            return False, res.message, None
         except Exception as e:
             logger.error(f"小爱播报服务转发异常: {e}")
             return False, str(e), None
@@ -520,3 +701,6 @@ class NotificationService:
 
 # 全局通知服务实例
 notification_service = NotificationService()
+
+# 模块级便捷入口（等价于 notification_service.send_notification，供直接 import 使用）
+send_notification = notification_service.send_notification

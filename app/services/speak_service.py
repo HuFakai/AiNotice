@@ -10,7 +10,7 @@ import uuid
 from typing import Dict, Optional, List, Tuple, Any
 from loguru import logger
 
-from app.models.speak import SpeakRequest, SpeakResponse, SpeakStatus, DeviceInfo
+from app.schemas.speak import SpeakRequest, SpeakResponse, SpeakStatus, DeviceInfo
 from app.models.speak_task import SpeakTask, TaskStatus
 from app.models.api_call_log import ApiCallLog
 from app.utils.mi_service import mi_service_wrapper
@@ -33,6 +33,8 @@ class SpeakService:
     def __init__(self):
         # 任务状态存储（生产环境应使用Redis）
         self._task_status: Dict[str, SpeakStatus] = {}
+        # 任务归属：task_id -> user_id（用于状态/停止接口的越权校验）
+        self._task_owner: Dict[str, Optional[int]] = {}
         # 播放队列
         self._play_queue: Dict[str, List[Dict]] = {}
 
@@ -122,6 +124,7 @@ class SpeakService:
                     start_time=time.strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 self._task_status[task_id] = task_status
+                self._task_owner[task_id] = user_id
 
                 # 记录API调用日志
                 if db is not None and user_id is not None:
@@ -469,31 +472,51 @@ class SpeakService:
         except Exception as e:
             logger.error(f"更新API调用日志失败: {e}")
 
-    async def get_task_status(self, task_id: str) -> Optional[SpeakStatus]:
+    async def get_task_status(self, task_id: str, user_id: Optional[int] = None) -> Optional[SpeakStatus]:
         """
         获取任务状态
 
         Args:
             task_id: 任务ID
+            user_id: 当前认证用户ID；提供时会校验任务归属，非归属任务返回 None
 
         Returns:
             任务状态或None
         """
-        return self._task_status.get(task_id)
+        status = self._task_status.get(task_id)
+        if status is None:
+            return None
 
-    async def stop_speak(self, task_id: Optional[str] = None, device_id: Optional[str] = None) -> Dict:
+        # 越权校验：任务记录中的 user_id 必须与当前用户一致
+        if user_id is not None:
+            owner_id = self._task_owner.get(task_id)
+            if owner_id is not None and owner_id != user_id:
+                logger.warning(f"拒绝跨用户查询任务状态: task_id={task_id}, owner={owner_id}, requester={user_id}")
+                return None
+
+        return status
+
+    async def stop_speak(self, task_id: Optional[str] = None, device_id: Optional[str] = None, user_id: Optional[int] = None) -> Dict:
         """
         停止语音播放
 
         Args:
             task_id: 任务ID
             device_id: 设备ID
+            user_id: 当前认证用户ID；提供时会校验任务归属，非归属任务拒绝操作
 
         Returns:
             操作结果
         """
         try:
             if task_id and task_id in self._task_status:
+                # 越权校验：任务记录中的 user_id 必须与当前用户一致
+                if user_id is not None:
+                    owner_id = self._task_owner.get(task_id)
+                    if owner_id is not None and owner_id != user_id:
+                        logger.warning(f"拒绝跨用户停止任务: task_id={task_id}, owner={owner_id}, requester={user_id}")
+                        return {"success": False, "message": "任务不存在或无权操作"}
+
                 # 根据任务ID停止
                 task_status = self._task_status[task_id]
                 device_id = task_status.device_id
@@ -631,39 +654,36 @@ class SpeakService:
             return None
 
         from app.utils.mi_service import MiServiceWrapper
-        from app.database import get_database_session
+        from app.database import AsyncSessionLocal
 
-        # 始终使用独立的数据库会话，避免会话冲突
+        # 使用独立数据库会话，避免与会话冲突
+        session = AsyncSessionLocal()
         accounts = None
         device_mi_username = None
-        
-        async for session in get_database_session():
-            try:
-                # 如果提供了device_id，先查找设备对应的mi_username
-                if device_id:
-                    from app.models.device import Device
-                    from sqlalchemy import select
-                    
-                    # 使用查询而不是get，因为device_id不是主键
-                    stmt = select(Device).where(Device.device_id == device_id, Device.user_id == user_id)
-                    result = await session.execute(stmt)
-                    device = result.scalar_one_or_none()
-                    
-                    if device:
-                        device_mi_username = device.mi_username
-                        logger.info(f"设备 {device_id} 对应的小米账号: {device_mi_username}")
-                    else:
-                        logger.warning(f"未找到设备 {device_id} 或设备不属于用户 {user_id}")
-                
-                mi_acc_service = MiAccountService(session)
-                accounts = await mi_acc_service.get_user_mi_accounts(user_id)
-                break  # 成功获取后退出循环
-            except Exception as e:
-                logger.error(f"获取用户小米账户失败: {e}")
-                continue  # 继续尝试下一个会话
-        
-        if accounts is None:
-            raise RuntimeError("获取用户小米账户失败: 无法创建数据库会话")
+        try:
+            # 如果提供了device_id，先查找设备对应的mi_username
+            if device_id:
+                from app.models.device import Device
+                from sqlalchemy import select
+
+                # 使用查询而不是get，因为device_id不是主键
+                stmt = select(Device).where(Device.device_id == device_id, Device.user_id == user_id)
+                result = await session.execute(stmt)
+                device = result.scalar_one_or_none()
+
+                if device:
+                    device_mi_username = device.mi_username
+                    logger.info(f"设备 {device_id} 对应的小米账号: {device_mi_username}")
+                else:
+                    logger.warning(f"未找到设备 {device_id} 或设备不属于用户 {user_id}")
+
+            mi_acc_service = MiAccountService(session)
+            accounts = await mi_acc_service.get_user_mi_accounts(user_id)
+        except Exception as e:
+            logger.error(f"获取用户小米账户失败: {e}")
+            raise RuntimeError(f"获取用户小米账户失败: {e}") from e
+        finally:
+            await session.close()
 
         # 选择账号：如果有设备对应的mi_username，优先选择匹配的账号
         chosen = None
@@ -706,21 +726,18 @@ class SpeakService:
             raise RuntimeError("MiService库不可用")
 
         from app.utils.mi_service import MiServiceWrapper
-        from app.database import get_database_session
+        from app.database import AsyncSessionLocal
 
-        # 始终使用独立的数据库会话，避免会话冲突
-        accounts = None
-        async for session in get_database_session():
-            try:
-                mi_acc_service = MiAccountService(session)
-                accounts = await mi_acc_service.get_user_mi_accounts(user_id)
-                break  # 成功获取后退出循环
-            except Exception as e:
-                logger.error(f"获取用户小米账户失败: {e}")
-                continue  # 继续尝试下一个会话
-        
-        if accounts is None:
-            raise RuntimeError("获取用户小米账户失败: 无法创建数据库会话")
+        # 使用独立数据库会话，避免与会话冲突
+        session = AsyncSessionLocal()
+        try:
+            mi_acc_service = MiAccountService(session)
+            accounts = await mi_acc_service.get_user_mi_accounts(user_id)
+        except Exception as e:
+            logger.error(f"获取用户小米账户失败: {e}")
+            raise RuntimeError(f"获取用户小米账户失败: {e}") from e
+        finally:
+            await session.close()
 
         # 选择一个可用账号：启用且同步成功的优先
         chosen = None
@@ -787,6 +804,7 @@ class SpeakService:
         # 删除旧任务
         for task_id in tasks_to_remove:
             del self._task_status[task_id]
+            self._task_owner.pop(task_id, None)
 
         if tasks_to_remove:
             logger.info(f"清理了 {len(tasks_to_remove)} 个旧任务记录")

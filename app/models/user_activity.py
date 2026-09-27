@@ -75,8 +75,8 @@ class ActivityType:
     USER_REGISTER = "user_register"
     USER_UPDATE_PROFILE = "user_update_profile"
 
-    # 小米账户相关
-    MI_ACCOUNT_ADD = "mi_account_add"
+    # 小米账户相关（原文件中本组常量重复定义了两次，已合并为一组）
+    MI_ACCOUNT_CREATE = "mi_account_create"
     MI_ACCOUNT_UPDATE = "mi_account_update"
     MI_ACCOUNT_DELETE = "mi_account_delete"
     MI_ACCOUNT_SYNC = "mi_account_sync"
@@ -92,9 +92,3 @@ class ActivityType:
     API_KEY_UPDATE = "api_key_update"
     API_KEY_DELETE = "api_key_delete"
     API_KEY_USE = "api_key_use"
-
-    # 小米账户相关
-    MI_ACCOUNT_CREATE = "mi_account_create"
-    MI_ACCOUNT_UPDATE = "mi_account_update"
-    MI_ACCOUNT_DELETE = "mi_account_delete"
-    MI_ACCOUNT_SYNC = "mi_account_sync"

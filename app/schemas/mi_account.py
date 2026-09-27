@@ -224,6 +224,30 @@ class AuthenticationTestResponse(BaseModel):
     devices_preview: Optional[List[Dict[str, str]]] = Field(None, description="设备预览")
 
 
+class QrCreateRequest(BaseModel):
+    """发起扫码登录请求"""
+
+    name: Optional[str] = Field(None, max_length=100, description="账户备注名（可选，默认用小米用户ID命名）")
+
+
+class QrCreateResponse(BaseModel):
+    """扫码登录会话信息"""
+
+    session_id: str = Field(..., description="扫码会话ID")
+    qr_image_url: str = Field(..., description="二维码图片地址（后端代理）")
+    login_url: str = Field("", description="备用登录链接（手机浏览器打开）")
+    expires_in: int = Field(..., description="二维码有效期（秒）")
+
+
+class QrStatusResponse(BaseModel):
+    """扫码登录轮询状态"""
+
+    status: str = Field(..., description="状态: waiting/confirmed/expired/error")
+    message: Optional[str] = Field(None, description="提示信息")
+    account_id: Optional[int] = Field(None, description="登录成功后创建的小米账户ID")
+    mi_username: Optional[str] = Field(None, description="登录成功后的账户名称")
+
+
 class DeviceResponse(BaseModel):
     """设备响应"""
 

@@ -1,0 +1,23 @@
+{
+  "name": "ainotice-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "爱通知 AiNotice — 小爱音箱消息推送 API 平台前端（Vue 3 + Vite SPA）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.1.1",
+    "@fontsource/noto-sans-sc": "^5.1.1",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^5.4.11"
+  }
+}

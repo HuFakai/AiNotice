@@ -4,12 +4,13 @@
 """
 
 import bcrypt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
 from loguru import logger
 
 from app.config import settings
+from app.utils.security_keys import ALLOWED_JWT_ALGORITHMS
 
 
 def hash_password(password: str) -> str:
@@ -62,11 +63,14 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(hours=settings.jwt_expire_hours)
+        expire = datetime.now(timezone.utc) + timedelta(hours=settings.jwt_expire_hours)
 
-    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
+    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
+
+    if settings.jwt_algorithm not in ALLOWED_JWT_ALGORITHMS:
+        raise ValueError(f"不支持的 JWT 算法: {settings.jwt_algorithm}")
 
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
     return encoded_jwt
@@ -106,7 +110,7 @@ def get_user_id_from_token(token: str) -> Optional[int]:
     return None
 
 
-def create_user_token(user_id: int, username: str, email: str) -> str:
+def create_user_token(user_id: int, username: str, email: str, token_version: int = 0) -> str:
     """
     为用户创建令牌
 
@@ -114,11 +118,18 @@ def create_user_token(user_id: int, username: str, email: str) -> str:
         user_id: 用户ID
         username: 用户名
         email: 邮箱
+        token_version: 令牌版本（登出/改密时递增使旧令牌失效）
 
     Returns:
         JWT令牌
     """
-    token_data = {"user_id": user_id, "username": username, "email": email, "type": "access_token"}
+    token_data = {
+        "user_id": user_id,
+        "username": username,
+        "email": email,
+        "type": "access_token",
+        "ver": token_version,
+    }
     return create_access_token(token_data)
 
 

@@ -33,7 +33,11 @@ class SystemSetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, comment="配置ID")
     setting_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, comment="配置键")
     setting_value: Mapped[Optional[str]] = mapped_column(Text, comment="配置值")
-    setting_type: Mapped[SettingType] = mapped_column(SQLEnum(SettingType), default=SettingType.STRING, comment="配置类型")
+    setting_type: Mapped[SettingType] = mapped_column(
+        SQLEnum(SettingType, values_callable=lambda o: [e.value for e in o]),
+        default=SettingType.STRING,
+        comment="配置类型",
+    )
     description: Mapped[Optional[str]] = mapped_column(Text, comment="配置描述")
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否公开可见")
 

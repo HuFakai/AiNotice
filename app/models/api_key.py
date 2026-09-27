@@ -3,7 +3,7 @@
 API密钥数据模型
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -24,9 +24,18 @@ class ApiKey(Base):
     )
 
     # 密钥信息
+    # 安全存储：新密钥只存 key_hash（SHA-256）与 key_prefix（掩码展示用前缀），
+    # 明文 api_key 仅存在于历史数据（启动迁移会将其清空并补算哈希）
     key_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="密钥名称")
-    api_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, comment="API密钥")
-    api_secret: Mapped[str] = mapped_column(String(255), nullable=False, comment="API密钥签名")
+    api_key: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True,
+        comment="历史明文列；迁移后的行在SQLite上存哈希副本以维持旧表NOT NULL约束，PG/MySQL为NULL"
+    )
+    api_secret: Mapped[Optional[str]] = mapped_column(String(255), comment="历史签名列（新密钥为空串/NULL）")
+    key_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), unique=True, index=True, comment="API密钥SHA-256哈希（校验用）"
+    )
+    key_prefix: Mapped[Optional[str]] = mapped_column(String(16), comment="密钥前缀（掩码展示用）")
 
     # 状态和权限
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否激活")
@@ -64,10 +73,18 @@ class ApiKey(Base):
 
     @property
     def is_expired(self) -> bool:
-        """是否已过期"""
+        """是否已过期
+
+        注意：SQLite 等后端读回的是 naive datetime，而这里用 aware UTC 比较；
+        为避免 "can't compare offset-naive and offset-aware datetimes"，
+        先对读回值做 UTC 归一化。
+        """
         if not self.expires_at:
             return False
-        return datetime.utcnow() > self.expires_at
+        expires_at = self.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > expires_at
 
     @property
     def is_usage_exceeded(self) -> bool:
@@ -83,10 +100,14 @@ class ApiKey(Base):
 
     @property
     def masked_api_key(self) -> str:
-        """掩码显示的API密钥"""
-        if len(self.api_key) <= 8:
-            return self.api_key
-        return f"{self.api_key[:4]}****{self.api_key[-4:]}"
+        """掩码显示的API密钥（优先用存储前缀，历史明文行回退掩码）"""
+        if self.key_prefix:
+            return f"{self.key_prefix}••••"
+        if self.api_key:
+            if len(self.api_key) <= 8:
+                return self.api_key
+            return f"{self.api_key[:4]}****{self.api_key[-4:]}"
+        return "••••"
 
     def has_permission(self, permission: str) -> bool:
         """检查是否具有指定权限"""
@@ -97,7 +118,7 @@ class ApiKey(Base):
     def increment_usage(self) -> None:
         """增加使用次数"""
         self.usage_count += 1
-        self.last_used_at = datetime.utcnow()
+        self.last_used_at = datetime.now(timezone.utc)
 
     def to_dict(self, include_secret: bool = False) -> dict:
         """转换为字典格式"""

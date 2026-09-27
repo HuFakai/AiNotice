@@ -5,11 +5,20 @@
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey, Index, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+import enum
 
 from app.database import Base
+
+
+class NotificationStatus(str, enum.Enum):
+    """通知发送状态枚举（与通知服务写入的字符串值保持一致）"""
+
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
 
 
 class NotificationLog(Base):
@@ -31,7 +40,16 @@ class NotificationLog(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False, comment="消息内容")
     recipient: Mapped[Optional[str]] = mapped_column(String(255), comment="接收人（例如邮箱、设备等）")
     
-    status: Mapped[str] = mapped_column(String(50), default="success", comment="发送状态 (success/failed)")
+    status: Mapped[NotificationStatus] = mapped_column(
+        SQLEnum(
+            NotificationStatus,
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+            length=50,
+        ),
+        default=NotificationStatus.SUCCESS,
+        comment="发送状态 (pending/success/failed)",
+    )
     error_message: Mapped[Optional[str]] = mapped_column(Text, comment="发送失败的错误信息")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="发送时间")
@@ -62,7 +80,7 @@ class NotificationLog(Base):
             "title": self.title,
             "content": self.content,
             "recipient": self.recipient,
-            "status": self.status,
+            "status": self.status.value if isinstance(self.status, NotificationStatus) else self.status,
             "error_message": self.error_message,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

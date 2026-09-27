@@ -301,6 +301,9 @@ class UserService:
             # 更新密码
             user.password_hash = hash_password(new_password)
 
+            # 递增令牌版本，使该用户所有已签发 JWT（含被盗用的）立即失效
+            user.token_version = (getattr(user, "token_version", 0) or 0) + 1
+
             # 记录活动
             await self._log_user_activity(
                 user_id, ActivityType.USER_UPDATE_PROFILE, "修改密码", client_ip=client_ip, user_agent=user_agent

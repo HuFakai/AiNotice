@@ -19,7 +19,15 @@ class ApiCallLog(Base):
     __tablename__ = "api_call_logs"
 
     # 基础字段
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="记录ID")
+    # 说明：id 使用 BigInteger 以满足调用量增长需求；SQLite 只有 INTEGER
+    # 主键才能自增（BIGINT 主键插入 NULL 会违反 NOT NULL），因此对 sqlite
+    # 方言降级为 INTEGER，其它方言仍为 BIGINT。
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+        comment="记录ID",
+    )
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, comment="用户ID")
     api_key_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("api_keys.id"), comment="API密钥ID")
     

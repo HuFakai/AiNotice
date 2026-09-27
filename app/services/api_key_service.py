@@ -5,8 +5,8 @@ API密钥服务
 
 from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
-from datetime import datetime, timedelta
+from sqlalchemy import select, and_, func, or_
+from datetime import datetime, timedelta, timezone
 from loguru import logger
 
 from app.models.user import User
@@ -15,8 +15,8 @@ from app.models.user_activity import ActivityType
 from app.services.user_service import UserService
 from app.utils.api_key import (
     generate_api_key,
-    generate_api_secret,
-    verify_api_key_signature,
+    build_key_metadata,
+    hash_api_key,
     validate_api_key_permissions,
     get_default_permissions,
 )
@@ -75,21 +75,25 @@ class ApiKeyService:
             if not perm_result["valid"]:
                 return False, f"权限配置错误: {', '.join(perm_result['issues'])}", None
 
-            # 生成API密钥和签名
+            # 生成API密钥（数据库只存哈希与前缀，明文仅在创建响应中返回一次）
             api_key = generate_api_key()
-            api_secret = generate_api_secret(api_key)
+            metadata = build_key_metadata(api_key)
 
             # 计算过期时间
             expires_at = None
             if expires_in_days:
-                expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
+                expires_at = datetime.now(timezone.utc) + timedelta(days=expires_in_days)
 
             # 创建密钥记录
             api_key_obj = ApiKey(
                 user_id=user_id,
                 key_name=key_name,
-                api_key=api_key,
-                api_secret=api_secret,
+                # SQLite 旧表 api_key/api_secret 为 NOT NULL，存哈希副本/空串以兼容；
+                # 校验一律走 key_hash，明文不落库
+                api_key=metadata["key_hash"],
+                api_secret="",
+                key_hash=metadata["key_hash"],
+                key_prefix=metadata["key_prefix"],
                 is_active=True,
                 permissions=perm_result["permissions"],
                 usage_limit=usage_limit,
@@ -112,7 +116,7 @@ class ApiKeyService:
             logger.info(f"API密钥创建成功: {key_name} (用户: {user.username})")
 
             # 使用预先获取的值构建返回数据，避免访问数据库对象
-            created_at = datetime.utcnow()
+            created_at = datetime.now(timezone.utc)
             result_data = {
                 "id": obj_id,  # 使用预先获取的ID
                 "key_name": key_name,
@@ -133,43 +137,46 @@ class ApiKeyService:
 
     async def verify_api_key(self, api_key: str) -> Tuple[bool, Optional[User], Optional[ApiKey]]:
         """
-        验证API密钥
+        验证API密钥（按 SHA-256 哈希查找，兼容历史明文行）
 
         Args:
-            api_key: API密钥
+            api_key: 完整API密钥
 
         Returns:
             (是否有效, 用户对象, 密钥对象)
         """
+        key_hint = api_key[:10] if api_key else ""
         try:
-            # 查找API密钥
-            stmt = select(ApiKey).where(and_(ApiKey.api_key == api_key, ApiKey.is_active == True))
+            key_hash = hash_api_key(api_key)
+
+            # 优先按哈希查找；历史明文行（key_hash 为空）回退按明文列查找
+            stmt = select(ApiKey).where(
+                and_(
+                    or_(ApiKey.key_hash == key_hash, and_(ApiKey.key_hash.is_(None), ApiKey.api_key == api_key)),
+                    ApiKey.is_active == True,  # noqa: E712
+                )
+            )
             result = await self.db.execute(stmt)
             api_key_obj = result.scalar_one_or_none()
 
             if not api_key_obj:
-                logger.warning(f"API密钥不存在或已禁用: {api_key[:10]}...")
+                logger.warning(f"API密钥不存在或已禁用: {key_hint}...")
                 return False, None, None
 
             # 检查是否过期
             if api_key_obj.is_expired:
-                logger.warning(f"API密钥已过期: {api_key[:10]}...")
+                logger.warning(f"API密钥已过期: {key_hint}...")
                 return False, None, None
 
             # 检查使用限制
             if api_key_obj.is_usage_exceeded:
-                logger.warning(f"API密钥使用次数超限: {api_key[:10]}...")
-                return False, None, None
-
-            # 验证签名
-            if not verify_api_key_signature(api_key, api_key_obj.api_secret):
-                logger.warning(f"API密钥签名验证失败: {api_key[:10]}...")
+                logger.warning(f"API密钥使用次数超限: {key_hint}...")
                 return False, None, None
 
             # 获取用户
             user = await self.user_service.get_user_by_id(api_key_obj.user_id)
             if not user or not user.is_active:
-                logger.warning(f"API密钥关联的用户不存在或已禁用: {api_key[:10]}...")
+                logger.warning(f"API密钥关联的用户不存在或已禁用: {key_hint}...")
                 return False, None, None
 
             # 更新使用统计

@@ -3,7 +3,7 @@
 语音任务数据模型
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import Integer, String, DateTime, Text, ForeignKey, Float, Enum as SQLEnum, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -98,8 +98,14 @@ class SpeakTask(Base):
         if not self.started_at:
             return None
 
-        end_time = self.completed_at or datetime.utcnow()
-        return (end_time - self.started_at).total_seconds()
+        end_time = self.completed_at or datetime.now(timezone.utc)
+        # started_at 若来自 SQLite 读回则为 naive，此处做 UTC 归一化避免 aware/naive 混算
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+        started_at = self.started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        return (end_time - started_at).total_seconds()
 
     @property
     def text_preview(self) -> str:
@@ -111,19 +117,19 @@ class SpeakTask(Base):
     def start(self) -> None:
         """开始任务"""
         self.status = TaskStatus.PLAYING
-        self.started_at = datetime.utcnow()
+        self.started_at = datetime.now(timezone.utc)
 
     def complete(self, actual_duration: Optional[float] = None) -> None:
         """完成任务"""
         self.status = TaskStatus.COMPLETED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
         if actual_duration is not None:
             self.actual_duration = actual_duration
 
     def fail(self, error_message: str) -> None:
         """任务失败"""
         self.status = TaskStatus.FAILED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
         self.error_message = error_message
 
     def to_dict(self) -> dict:

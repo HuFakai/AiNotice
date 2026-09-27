@@ -3,7 +3,7 @@
 设备数据模型
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -85,7 +85,7 @@ class Device(Base):
         """更新在线状态"""
         self.is_online = is_online
         if is_online:
-            self.last_seen_at = datetime.utcnow()
+            self.last_seen_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> dict:
         """转换为字典格式"""

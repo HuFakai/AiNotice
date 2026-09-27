@@ -31,7 +31,7 @@ def generate_api_key() -> str:
 
 def generate_api_secret(api_key: str) -> str:
     """
-    生成API密钥的签名
+    生成API密钥的签名（历史兼容路径，仅用于迁移旧数据；新密钥改用哈希校验）
 
     Args:
         api_key: API密钥
@@ -44,6 +44,42 @@ def generate_api_secret(api_key: str) -> str:
     message = api_key.encode("utf-8")
     signature = hmac.new(secret_key, message, hashlib.sha256).hexdigest()
     return signature
+
+
+def hash_api_key(api_key: str) -> str:
+    """
+    计算 API 密钥的存储哈希（SHA-256）
+
+    数据库只存哈希不存明文；密钥熵约 339 bit，无需加盐即可抗暴力破解。
+    校验时对提交的 key 计算同哈希后按哈希值查找。
+
+    Args:
+        api_key: 完整 API 密钥
+
+    Returns:
+        64 位十六进制哈希
+    """
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+
+
+def build_key_metadata(api_key: str) -> Dict[str, str]:
+    """
+    构建密钥存储元数据
+
+    Returns:
+        {"key_hash": sha256哈希, "key_prefix": 展示用前缀}
+    """
+    return {
+        "key_hash": hash_api_key(api_key),
+        "key_prefix": api_key[:12],
+    }
+
+
+def mask_key_prefix(key_prefix: str) -> str:
+    """根据存储的前缀生成掩码展示"""
+    if not key_prefix:
+        return "****"
+    return f"{key_prefix}****{key_prefix[-4:]}"
 
 
 def verify_api_key_signature(api_key: str, api_secret: str) -> bool:
@@ -135,6 +171,7 @@ def validate_api_key_permissions(permissions: Optional[Dict[str, Any]]) -> Dict[
         "stop_speak": "停止播放权限",
         "set_volume": "设置音量权限",
         "get_status": "获取状态权限",
+        "send_notify": "发送通知权限",
     }
 
     # 如果权限为None，使用默认权限
@@ -181,6 +218,7 @@ def get_default_permissions() -> Dict[str, bool]:
         "stop_speak": True,
         "set_volume": False,
         "get_status": True,
+        "send_notify": True,
     }
 
 

@@ -4,19 +4,16 @@
 使用APScheduler实现定时清理数据库
 """
 
-import logging
 import asyncio
 from datetime import datetime, time
 from typing import Optional, Dict, Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+from loguru import logger
 
 from app.services.cleanup_service import run_database_cleanup
 from app.config import settings
-
-
-logger = logging.getLogger(__name__)
 
 
 class SchedulerService:
@@ -211,7 +208,8 @@ class SchedulerService:
         """
         try:
             if self.scheduler and self.is_running:
-                self.scheduler.shutdown(wait=True)
+                # 关闭时不等待在途任务，避免阻塞进程退出
+                self.scheduler.shutdown(wait=False)
                 self.is_running = False
                 logger.info("定时任务调度器已停止")
                 return True

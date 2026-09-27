@@ -1,0 +1,478 @@
+<script setup>
+/**
+ * 个人中心 /profile
+ * - 资料：GET/PUT /user/profile（后端当前仅支持 display_name）
+ * - 改密：POST /user/change-password；成功后提示「其他设备已强制下线」
+ *   （后端递增 token_version，旧 token 失效，故本地也需要重新登录）
+ * - 活动记录：GET /user/activities
+ * - 登录历史：GET /user/login-history
+ * - 统计：GET /user/stats
+ */
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+import EmptyState from '../components/EmptyState.vue'
+import PageHeader from '../components/PageHeader.vue'
+import StatCard from '../components/StatCard.vue'
+import {
+  changePassword,
+  getActivities,
+  getLoginHistory,
+  getProfile,
+  getUserStats,
+  updateProfile,
+} from '../api/user.js'
+import {
+  activityLabel,
+  errorText,
+  formatDateTime,
+  formatRelative,
+  isValidEmail,
+  passwordStrength,
+} from '../lib/format.js'
+import { toastError, toastSuccess } from '../lib/toast.js'
+import { useAuthStore } from '../stores/auth.js'
+
+const auth = useAuthStore()
+const router = useRouter()
+
+const loading = ref(true)
+const profile = ref(null)
+const stats = ref(null)
+const activities = ref([])
+const history = ref([])
+
+const tab = ref('activities')
+
+/* 资料表单 */
+const savingProfile = ref(false)
+const profileError = ref('')
+const displayName = ref('')
+
+/* 改密表单 */
+const pwdForm = ref({ old_password: '', new_password: '', confirm: '' })
+const changing = ref(false)
+const pwdError = ref('')
+
+const pwdStrength = computed(() => passwordStrength(pwdForm.value.new_password))
+const pwdMismatch = computed(
+  () => Boolean(pwdForm.value.confirm) && pwdForm.value.new_password !== pwdForm.value.confirm
+)
+const canChangePwd = computed(
+  () =>
+    pwdForm.value.old_password.length > 0 &&
+    pwdForm.value.new_password.length >= 8 &&
+    pwdForm.value.new_password === pwdForm.value.confirm
+)
+
+async function load() {
+  loading.value = true
+  const results = await Promise.allSettled([
+    getProfile(),
+    getUserStats(),
+    getActivities(30, 0),
+    getLoginHistory(30, 0),
+  ])
+
+  const [pf, st, ac, hi] = results
+  if (pf.status === 'fulfilled') {
+    profile.value = pf.value
+    displayName.value = pf.value?.display_name || ''
+  }
+  if (st.status === 'fulfilled') stats.value = st.value
+  if (ac.status === 'fulfilled') activities.value = ac.value
+  if (hi.status === 'fulfilled') history.value = hi.value
+
+  loading.value = false
+}
+
+onMounted(load)
+
+/* ---------------- 保存资料 ---------------- */
+
+async function saveProfile() {
+  if (savingProfile.value) return
+  profileError.value = ''
+
+  const name = displayName.value.trim()
+  if (!name) {
+    profileError.value = '显示名称不能为空'
+    return
+  }
+
+  savingProfile.value = true
+  try {
+    await updateProfile({ display_name: name })
+    toastSuccess('资料已更新')
+
+    // 同步到 auth store，顶栏立即反映新名称
+    if (profile.value) profile.value = { ...profile.value, display_name: name }
+    if (auth.user) auth.setUser({ ...auth.user, display_name: name })
+  } catch (err) {
+    profileError.value = errorText(err, '保存失败')
+  } finally {
+    savingProfile.value = false
+  }
+}
+
+/* ---------------- 修改密码 ---------------- */
+
+async function submitPassword() {
+  if (changing.value) return
+  pwdError.value = ''
+
+  if (!pwdForm.value.old_password) {
+    pwdError.value = '请输入当前密码'
+    return
+  }
+  if (pwdForm.value.new_password.length < 8) {
+    pwdError.value = '新密码至少需要 8 位'
+    return
+  }
+  if (pwdForm.value.new_password !== pwdForm.value.confirm) {
+    pwdError.value = '两次输入的新密码不一致'
+    return
+  }
+  if (pwdForm.value.new_password === pwdForm.value.old_password) {
+    pwdError.value = '新密码不能与当前密码相同'
+    return
+  }
+
+  changing.value = true
+  try {
+    await changePassword({
+      old_password: pwdForm.value.old_password,
+      new_password: pwdForm.value.new_password,
+    })
+
+    pwdForm.value = { old_password: '', new_password: '', confirm: '' }
+    toastSuccess('密码已修改，其他设备已强制下线，请重新登录')
+
+    // token_version 已递增，当前 token 亦失效 → 清理并回到登录页
+    auth.reset()
+    setTimeout(() => router.replace({ path: '/login' }), 1200)
+  } catch (err) {
+    pwdError.value = errorText(err, '修改密码失败，请检查当前密码')
+  } finally {
+    changing.value = false
+  }
+}
+
+const activityRows = computed(() => activities.value)
+const historyRows = computed(() => history.value)
+
+function activityTone(type) {
+  const v = String(type || '').toLowerCase()
+  if (v.includes('fail') || v.includes('delete')) return 'error'
+  if (v.includes('login') || v.includes('create')) return 'success'
+  return 'info'
+}
+</script>
+
+<template>
+  <div class="page">
+    <PageHeader
+      nav="07"
+      eyebrow="PROFILE"
+      title="个人中心"
+      desc="管理账号资料、登录安全与操作审计记录。"
+    >
+      <template #actions>
+        <button type="button" class="btn btn--ghost btn--sm" :disabled="loading" @click="load">刷新</button>
+      </template>
+    </PageHeader>
+
+    <div class="stack stagger">
+      <!-- 统计 -->
+      <div class="grid grid--4">
+        <StatCard label="API 调用" :value="stats?.total_api_calls ?? null" hint="累计" />
+        <StatCard label="密钥" :value="stats?.api_keys_count ?? null" :hint="`${stats?.active_api_keys ?? 0} 个启用`" />
+        <StatCard label="设备" :value="stats?.device_count ?? null" :hint="`${stats?.online_devices ?? 0} 台在线`" />
+        <StatCard label="今日播报" :value="stats?.speak_tasks_today ?? null" accent />
+      </div>
+
+      <div class="profile-split">
+        <!-- 左列：资料 + 改密 -->
+        <div class="stack">
+          <section class="card">
+            <div class="card__head">
+              <span class="card__title">
+                <span class="led led--active" aria-hidden="true"></span>
+                账号资料
+              </span>
+              <span v-if="profile" class="badge" :class="profile.is_verified ? 'badge--green' : 'badge--warn'">
+                {{ profile.is_verified ? '已验证' : '未验证' }}
+              </span>
+            </div>
+
+            <div v-if="loading" class="loading-row">
+              <span class="spinner"></span>
+              <span>LOADING</span>
+            </div>
+
+            <div v-else class="card__body">
+              <div class="dl mb-3">
+                <div class="dl__item">
+                  <div class="dl__key">用户名</div>
+                  <div class="dl__val mono">{{ profile?.username || '—' }}</div>
+                </div>
+                <div class="dl__item">
+                  <div class="dl__key">邮箱</div>
+                  <div class="dl__val mono truncate">{{ profile?.email || '—' }}</div>
+                </div>
+                <div class="dl__item">
+                  <div class="dl__key">注册时间</div>
+                  <div class="dl__val td-dim">{{ formatDateTime(profile?.created_at) }}</div>
+                </div>
+                <div class="dl__item">
+                  <div class="dl__key">最后登录</div>
+                  <div class="dl__val td-dim">{{ formatRelative(profile?.last_login_at) }}</div>
+                </div>
+              </div>
+
+              <form @submit.prevent="saveProfile">
+                <div class="field">
+                  <label class="field__label" for="pf-name">显示名称</label>
+                  <div class="input-group">
+                    <input
+                      id="pf-name"
+                      v-model="displayName"
+                      class="input"
+                      type="text"
+                      maxlength="100"
+                      placeholder="控制台展示用"
+                      :disabled="savingProfile"
+                    />
+                    <button type="submit" class="btn btn--primary" :disabled="savingProfile">
+                      <span v-if="savingProfile" class="spinner"></span>
+                      <span>{{ savingProfile ? '保存中' : '保存' }}</span>
+                    </button>
+                  </div>
+                  <div class="field__hint">用户名与邮箱不可修改</div>
+                </div>
+
+                <div v-if="profileError" class="notice notice--error" role="alert">
+                  <span class="led led--error" aria-hidden="true"></span>
+                  <span>{{ profileError }}</span>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__head">
+              <span class="card__title">
+                <span class="led led--warn" aria-hidden="true"></span>
+                修改密码
+              </span>
+            </div>
+
+            <div class="card__body">
+              <div class="notice notice--warn mb-3">
+                <span class="led led--warn" aria-hidden="true"></span>
+                <span>修改密码后，其它设备上的登录状态会被强制下线，需要重新登录。</span>
+              </div>
+
+              <form @submit.prevent="submitPassword">
+                <div class="field">
+                  <label class="field__label" for="pwd-old">当前密码<span class="req">*</span></label>
+                  <input
+                    id="pwd-old"
+                    v-model="pwdForm.old_password"
+                    class="input"
+                    type="password"
+                    autocomplete="current-password"
+                    :disabled="changing"
+                  />
+                </div>
+
+                <div class="field">
+                  <label class="field__label" for="pwd-new">新密码<span class="req">*</span></label>
+                  <input
+                    id="pwd-new"
+                    v-model="pwdForm.new_password"
+                    class="input"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="至少 8 位"
+                    :disabled="changing"
+                  />
+                  <div class="pw-meter">
+                    <div class="pw-meter__bars">
+                      <i
+                        v-for="i in 5"
+                        :key="i"
+                        class="pw-meter__bar"
+                        :class="i <= pwdStrength.score ? `pw-meter__bar--on-${pwdStrength.level}` : ''"
+                      ></i>
+                    </div>
+                    <span class="pw-meter__text">{{ pwdStrength.level }}</span>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label class="field__label" for="pwd-confirm">确认新密码<span class="req">*</span></label>
+                  <input
+                    id="pwd-confirm"
+                    v-model="pwdForm.confirm"
+                    class="input"
+                    :class="{ 'input--invalid': pwdMismatch }"
+                    type="password"
+                    autocomplete="new-password"
+                    :disabled="changing"
+                  />
+                  <div v-if="pwdMismatch" class="field__error">两次输入的新密码不一致</div>
+                </div>
+
+                <div v-if="pwdError" class="notice notice--error mb-3" role="alert">
+                  <span class="led led--error" aria-hidden="true"></span>
+                  <span>{{ pwdError }}</span>
+                </div>
+
+                <button type="submit" class="btn btn--primary btn--block" :disabled="changing || !canChangePwd">
+                  <span v-if="changing" class="spinner"></span>
+                  <span>{{ changing ? '提交中' : '修改密码' }}</span>
+                </button>
+              </form>
+            </div>
+          </section>
+        </div>
+
+        <!-- 右列：活动 / 登录历史 -->
+        <section class="card">
+          <div class="card__head">
+            <div class="segment">
+              <button
+                type="button"
+                class="segment__item"
+                :class="{ 'is-active': tab === 'activities' }"
+                @click="tab = 'activities'"
+              >
+                活动记录
+              </button>
+              <button
+                type="button"
+                class="segment__item"
+                :class="{ 'is-active': tab === 'history' }"
+                @click="tab = 'history'"
+              >
+                登录历史
+              </button>
+            </div>
+            <span class="tag-mono">
+              {{ tab === 'activities' ? activityRows.length : historyRows.length }} 条
+            </span>
+          </div>
+
+          <div v-if="loading" class="loading-row">
+            <span class="spinner"></span>
+            <span>LOADING</span>
+          </div>
+
+          <EmptyState
+            v-else-if="tab === 'activities' && !activityRows.length"
+            icon="∅"
+            title="暂无活动记录"
+            desc="创建密钥、绑定账号等操作都会记录在这里。"
+          />
+
+          <EmptyState
+            v-else-if="tab === 'history' && !historyRows.length"
+            icon="∅"
+            title="暂无登录历史"
+            desc="后续登录会在此留下审计记录。"
+          />
+
+          <div v-else class="scrollbox">
+            <ul v-if="tab === 'activities'" class="timeline">
+              <li v-for="item in activityRows" :key="item.id" class="tl">
+                <span class="led" :class="`led--${activityTone(item.activity_type)}`" aria-hidden="true"></span>
+                <div class="tl__body">
+                  <div class="tl__title">{{ item.activity_description || activityLabel(item.activity_type) }}</div>
+                  <div class="tl__meta">
+                    <span class="tag-mono">{{ activityLabel(item.activity_type) }}</span>
+                    <span v-if="item.client_ip" class="tag-mono mono">{{ item.client_ip }}</span>
+                    <span class="tag-mono">{{ formatDateTime(item.created_at) }}</span>
+                  </div>
+                </div>
+              </li>
+            </ul>
+
+            <ul v-else class="timeline">
+              <li v-for="item in historyRows" :key="item.id" class="tl">
+                <span class="led led--info" aria-hidden="true"></span>
+                <div class="tl__body">
+                  <div class="tl__title">{{ item.activity_description || activityLabel(item.activity_type) }}</div>
+                  <div class="tl__meta">
+                    <span v-if="item.client_ip" class="tag-mono mono">{{ item.client_ip }}</span>
+                    <span class="tag-mono">{{ formatDateTime(item.created_at) }}</span>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.profile-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 1020px) {
+  .profile-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.scrollbox {
+  max-height: 620px;
+  overflow-y: auto;
+  padding: 6px 18px 18px;
+}
+
+.timeline {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.tl {
+  display: flex;
+  gap: 11px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.tl:last-child {
+  border-bottom: none;
+}
+
+.tl .led {
+  margin-top: 5px;
+}
+
+.tl__body {
+  min-width: 0;
+}
+
+.tl__title {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.tl__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+</style>

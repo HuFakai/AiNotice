@@ -31,7 +31,7 @@ class UpdateProfileRequest(BaseModel):
     display_name: Optional[str] = Field(None, description="显示名称", max_length=100)
 
     class Config:
-        schema_extra = {"example": {"display_name": "新的显示名称"}}
+        json_json_schema_extra = {"example": {"display_name": "新的显示名称"}}
 
 
 class ChangePasswordRequest(BaseModel):
@@ -41,7 +41,7 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(..., description="新密码", min_length=8)
 
     class Config:
-        schema_extra = {"example": {"old_password": "old_password", "new_password": "new_password123"}}
+        json_json_schema_extra = {"example": {"old_password": "old_password", "new_password": "new_password123"}}
 
 
 class UserActivityResponse(BaseModel):

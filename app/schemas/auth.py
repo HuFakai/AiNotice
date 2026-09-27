@@ -15,7 +15,7 @@ class LoginRequest(BaseModel):
     password: str = Field(..., description="密码", min_length=1)
 
     class Config:
-        schema_extra = {"example": {"username_or_email": "demo@xiaoai-api.com", "password": "Demo123456"}}
+        json_json_schema_extra = {"example": {"username_or_email": "demo@xiaoai-api.com", "password": "Demo123456"}}
 
 
 class RegisterRequest(BaseModel):
@@ -34,7 +34,7 @@ class RegisterRequest(BaseModel):
         return v
 
     class Config:
-        schema_extra = {
+        json_json_schema_extra = {
             "example": {
                 "username": "demo_user",
                 "email": "demo@xiaoai-api.com",

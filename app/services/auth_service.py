@@ -98,8 +98,10 @@ class AuthService:
             if not user:
                 return False, "用户名或密码错误", None
 
-            # 生成JWT令牌
-            access_token = create_user_token(user.id, user.username, user.email)
+            # 生成JWT令牌（携带令牌版本，登出/改密后旧令牌自动失效）
+            access_token = create_user_token(
+                user.id, user.username, user.email, token_version=getattr(user, "token_version", 0) or 0
+            )
 
             # 记录登录活动
             await self.user_service._log_user_activity(
@@ -156,6 +158,13 @@ class AuthService:
             if not user or not user.is_active:
                 return False, None
 
+            # 令牌版本校验：登出/改密会使旧令牌失效
+            token_ver = payload.get("ver", 0) or 0
+            current_ver = getattr(user, "token_version", 0) or 0
+            if token_ver != current_ver:
+                logger.info(f"令牌版本不匹配（已失效）: user_id={user_id}")
+                return False, None
+
             return True, user
 
         except Exception as e:
@@ -181,13 +190,16 @@ class AuthService:
             if not user:
                 return False
 
+            # 递增令牌版本，使该用户所有已签发 JWT 立即失效
+            user.token_version = (getattr(user, "token_version", 0) or 0) + 1
+
             # 记录登出活动
             await self.user_service._log_user_activity(
                 user_id, ActivityType.USER_LOGOUT, f"用户登出: {user.username}", client_ip=client_ip, user_agent=user_agent
             )
             await self.db.commit()
 
-            logger.info(f"用户登出: {user.username}")
+            logger.info(f"用户登出: {user.username}（令牌版本已递增）")
             return True
 
         except Exception as e:

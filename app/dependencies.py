@@ -28,9 +28,9 @@ async def get_db() -> AsyncSession:
         try:
             yield session
         finally:
-            # 确保会话被正确关闭
-            if session and not session.is_active:
-                await session.close()
+            # 无条件关闭会话（原实现用 not session.is_active 判断，条件恒为 False，
+            # 导致会话从不被真正关闭）
+            await session.close()
 
 
 async def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
@@ -269,10 +269,57 @@ async def get_user_and_api_key_info(
 
     # 两种认证方式都失败
     raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED, 
-        detail="认证失败", 
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="认证失败",
         headers={"WWW-Authenticate": "Bearer"}
     )
+
+
+def require_api_key_permission(permission: str):
+    """
+    端点级 API Key 权限门禁工厂。
+
+    - JWT 用户访问：视为账号所有者，直接放行
+    - API Key 访问：校验该 key 的 permissions 中是否启用指定权限位
+
+    用法：
+        @router.post("/stop")
+        async def stop(current_user: User = Depends(require_api_key_permission("stop_speak"))): ...
+    """
+
+    async def _dependency(
+        request: Request,
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+        auth_service: AuthService = Depends(get_auth_service),
+        api_key_service: ApiKeyService = Depends(get_api_key_service),
+    ) -> User:
+        if not credentials:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="需要认证", headers={"WWW-Authenticate": "Bearer"}
+            )
+
+        token = credentials.credentials
+
+        if token.startswith("xai_sk_"):
+            is_valid, user, api_key_obj = await api_key_service.verify_api_key(token)
+            if not is_valid or not user or not api_key_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED, detail="API密钥无效", headers={"WWW-Authenticate": "ApiKey"}
+                )
+            if not api_key_obj.has_permission(permission):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail=f"该API密钥未被授予 {permission} 权限"
+                )
+            return user
+
+        is_valid, user = await auth_service.verify_token(token)
+        if not is_valid or not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="认证失败", headers={"WWW-Authenticate": "Bearer"}
+            )
+        return user
+
+    return _dependency
 
 
 def get_client_ip(request: Request) -> str:
@@ -291,23 +338,28 @@ def get_client_ip(request: Request) -> str:
     """
     from ipaddress import ip_address
 
-    # 优先从反向代理头获取真实IP
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        ip = forwarded_for.split(",")[0].strip()
-        try:
-            ip_address(ip)
-            return ip
-        except ValueError:
-            pass
+    from app.config import get_settings
 
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        try:
-            ip_address(real_ip)
-            return real_ip
-        except ValueError:
-            pass
+    # 默认不信任代理头（客户端可伪造 X-Forwarded-For 污染审计日志）；
+    # 部署在可信反向代理之后时，通过 TRUST_PROXY_HEADERS=true 显式开启
+    if get_settings().trust_proxy_headers:
+        # 优先从反向代理头获取真实IP
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            ip = forwarded_for.split(",")[0].strip()
+            try:
+                ip_address(ip)
+                return ip
+            except ValueError:
+                pass
+
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            try:
+                ip_address(real_ip)
+                return real_ip
+            except ValueError:
+                pass
 
     # 直接连接的客户端IP
     client_ip = request.client.host if request.client else None

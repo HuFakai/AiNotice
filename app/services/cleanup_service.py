@@ -4,22 +4,20 @@
 定期清理过期数据，保持数据库性能
 """
 
-import logging
 import os
 import glob
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from loguru import logger
 
 from app.database import AsyncSessionLocal
 from app.models.api_call_log import ApiCallLog
 from app.models.speak_task import SpeakTask
 from app.models.user_activity import UserActivity
+from app.models.notification_log import NotificationLog
 from app.config import get_settings
-
-
-logger = logging.getLogger(__name__)
 
 
 class DatabaseCleanupService:
@@ -34,6 +32,7 @@ class DatabaseCleanupService:
             'api_call_logs': self.settings.api_logs_retention_days,
             'speak_tasks': self.settings.speak_tasks_retention_days,
             'user_activities': self.settings.user_activities_retention_days,
+            'notification_logs': getattr(self.settings, 'notification_logs_retention_days', 30),
         }
     
     async def __aenter__(self):
@@ -59,7 +58,7 @@ class DatabaseCleanupService:
         if retention_days is None:
             retention_days = self.retention_days['api_call_logs']
         
-        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
         
         try:
             # 统计要删除的记录数
@@ -118,7 +117,7 @@ class DatabaseCleanupService:
         if retention_days is None:
             retention_days = self.retention_days['speak_tasks']
         
-        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
         
         try:
             # 统计要删除的记录数
@@ -177,7 +176,7 @@ class DatabaseCleanupService:
         if retention_days is None:
             retention_days = self.retention_days['user_activities']
         
-        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
         
         try:
             # 统计要删除的记录数
@@ -223,6 +222,65 @@ class DatabaseCleanupService:
                 'error': str(e)
             }
     
+    async def cleanup_notification_logs(self, retention_days: int = None) -> Dict[str, Any]:
+        """
+        清理通知发送历史记录
+
+        Args:
+            retention_days: 保留天数，默认由配置 notification_logs_retention_days 决定
+
+        Returns:
+            清理结果统计
+        """
+        if retention_days is None:
+            retention_days = self.retention_days['notification_logs']
+
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+        try:
+            # 统计要删除的记录数
+            count_stmt = select(func.count(NotificationLog.id)).where(NotificationLog.created_at < cutoff_date)
+            count_result = await self.session.execute(count_stmt)
+            records_to_delete = count_result.scalar() or 0
+
+            if records_to_delete == 0:
+                logger.info(f"通知日志清理：没有超过{retention_days}天的记录需要清理")
+                return {
+                    'table': 'notification_logs',
+                    'retention_days': retention_days,
+                    'records_deleted': 0,
+                    'cutoff_date': cutoff_date.isoformat(),
+                    'status': 'success'
+                }
+
+            # 执行删除
+            delete_stmt = delete(NotificationLog).where(NotificationLog.created_at < cutoff_date)
+            result = await self.session.execute(delete_stmt)
+            await self.session.commit()
+
+            deleted_count = result.rowcount
+            logger.info(f"通知日志清理完成：删除了{deleted_count}条超过{retention_days}天的记录")
+
+            return {
+                'table': 'notification_logs',
+                'retention_days': retention_days,
+                'records_deleted': deleted_count,
+                'cutoff_date': cutoff_date.isoformat(),
+                'status': 'success'
+            }
+
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"通知日志清理失败: {str(e)}")
+            return {
+                'table': 'notification_logs',
+                'retention_days': retention_days,
+                'records_deleted': 0,
+                'cutoff_date': cutoff_date.isoformat(),
+                'status': 'error',
+                'error': str(e)
+            }
+
     def cleanup_log_files(self) -> Dict[str, Any]:
         """
         清理过期的日志文件
@@ -232,7 +290,7 @@ class DatabaseCleanupService:
         """
         try:
             retention_days = getattr(self.settings, 'log_files_retention_days', 30)
-            cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
             
             # 获取logs目录路径
             logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
@@ -261,8 +319,8 @@ class DatabaseCleanupService:
             for pattern in log_patterns:
                 for file_path in glob.glob(pattern):
                     try:
-                        # 获取文件修改时间
-                        file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+                        # 获取文件修改时间（带 UTC 时区，与 cutoff_date 保持 aware 比较）
+                        file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path), tz=timezone.utc)
                         
                         # 如果文件超过保留期限，则删除
                         if file_mtime < cutoff_date:
@@ -306,7 +364,7 @@ class DatabaseCleanupService:
         Returns:
             所有表的清理结果统计
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         results = []
         
         logger.info("开始执行数据库清理任务")
@@ -323,11 +381,15 @@ class DatabaseCleanupService:
         activity_result = await self.cleanup_user_activities()
         results.append(activity_result)
         
+        # 清理通知日志
+        notification_result = await self.cleanup_notification_logs()
+        results.append(notification_result)
+        
         # 清理日志文件
         log_result = self.cleanup_log_files()
         results.append(log_result)
         
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
         
         # 统计总结果

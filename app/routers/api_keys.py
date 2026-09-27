@@ -17,14 +17,40 @@ from app.models.user import User
 router = APIRouter(prefix="/api-keys", tags=["API密钥管理"])
 
 
-@router.get("", response_model=List[ApiKeyResponse], summary="获取API密钥列表", description="获取当前用户的所有API密钥")
+def _display_key(api_key_obj) -> str:
+    """列表/详情展示用的掩码密钥（哈希存储行用前缀，历史明文行走旧掩码属性）"""
+    prefix = getattr(api_key_obj, "key_prefix", None)
+    if prefix:
+        return f"{prefix}••••"
+    return api_key_obj.masked_api_key
+
+
+@router.get("", response_model=List[ApiKeyResponse], summary="获取API密钥列表", description="获取当前用户的所有API密钥（密钥仅掩码展示）")
 async def get_api_keys(
     current_user: User = Depends(get_current_active_user), api_key_service: ApiKeyService = Depends(get_api_key_service)
 ):
     """获取API密钥列表"""
     try:
         api_keys = await api_key_service.get_user_api_keys(current_user.id)
-        return [ApiKeyResponse.from_orm(api_key) for api_key in api_keys]
+        return [
+            ApiKeyResponse(
+                id=ak.id,
+                key_name=ak.key_name,
+                api_key=_display_key(ak),
+                is_active=ak.is_active,
+                is_expired=ak.is_expired,
+                is_usage_exceeded=ak.is_usage_exceeded,
+                is_valid=ak.is_valid,
+                permissions=ak.permissions,
+                usage_count=ak.usage_count,
+                usage_limit=ak.usage_limit,
+                last_used_at=ak.last_used_at,
+                expires_at=ak.expires_at,
+                created_at=ak.created_at,
+                updated_at=ak.updated_at,
+            )
+            for ak in api_keys
+        ]
 
     except Exception as e:
         logger.error(f"获取API密钥列表错误: {e}")
@@ -68,10 +94,7 @@ async def create_api_key(
         raise
     except Exception as e:
         logger.error(f"创建API密钥错误: {e}")
-        import traceback
-
-        traceback.print_exc()  # 打印完整错误栈
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"服务器内部错误: {str(e)}")  # 返回具体错误信息
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误")
 
 
 @router.put("/{api_key_id}", response_model=SuccessResponse, summary="更新API密钥", description="更新指定的API密钥配置")

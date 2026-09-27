@@ -112,29 +112,48 @@ async def get_user_activities(
 
 @router.get("/stats", response_model=UserStatsResponse, summary="获取用户统计信息", description="获取当前用户的统计数据")
 async def get_user_stats(db: DatabaseSession, current_user: User = Depends(get_current_active_user)):
-    """获取用户统计信息"""
+    """获取用户统计信息（聚合查询，不加载关系集合）"""
     try:
-        # 这里需要实现统计逻辑
-        # 暂时返回示例数据
-        # 查询API调用总次数
+        from datetime import datetime, timezone
+
         from app.models.api_call_log import ApiCallLog
+        from app.models.device import Device
+        from app.models.api_key import ApiKey
+        from app.models.speak_task import SpeakTask
         from sqlalchemy import func, select
-        
-        # 使用异步查询
-        result = await db.execute(
-            select(func.count(ApiCallLog.id)).where(
-                ApiCallLog.user_id == current_user.id
-            )
+
+        async def _scalar(stmt) -> int:
+            result = await db.execute(stmt)
+            return result.scalar() or 0
+
+        total_calls = await _scalar(select(func.count(ApiCallLog.id)).where(ApiCallLog.user_id == current_user.id))
+        device_count = await _scalar(select(func.count(Device.id)).where(Device.user_id == current_user.id))
+        online_devices = await _scalar(
+            select(func.count(Device.id)).where(Device.user_id == current_user.id, Device.is_online == True)  # noqa: E712
         )
-        total_calls = result.scalar() or 0
-        
+        api_keys_count = await _scalar(select(func.count(ApiKey.id)).where(ApiKey.user_id == current_user.id))
+        active_api_keys = await _scalar(
+            select(func.count(ApiKey.id)).where(ApiKey.user_id == current_user.id, ApiKey.is_active == True)  # noqa: E712
+        )
+
+        # 今日/本月播放任务数（UTC 边界，与库内时间语义一致）
+        now = datetime.now(timezone.utc)
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        speak_tasks_today = await _scalar(
+            select(func.count(SpeakTask.id)).where(SpeakTask.user_id == current_user.id, SpeakTask.created_at >= day_start)
+        )
+        speak_tasks_month = await _scalar(
+            select(func.count(SpeakTask.id)).where(SpeakTask.user_id == current_user.id, SpeakTask.created_at >= month_start)
+        )
+
         return UserStatsResponse(
-            device_count=len(current_user.devices) if current_user.devices else 0,
-            online_devices=sum(1 for device in (current_user.devices or []) if device.is_online),
-            api_keys_count=len(current_user.api_keys) if current_user.api_keys else 0,
-            active_api_keys=sum(1 for key in (current_user.api_keys or []) if key.is_active),
-            speak_tasks_today=0,  # 需要从数据库查询
-            speak_tasks_month=0,  # 需要从数据库查询
+            device_count=device_count,
+            online_devices=online_devices,
+            api_keys_count=api_keys_count,
+            active_api_keys=active_api_keys,
+            speak_tasks_today=speak_tasks_today,
+            speak_tasks_month=speak_tasks_month,
             total_api_calls=total_calls,
         )
 

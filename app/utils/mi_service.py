@@ -31,7 +31,7 @@ except ImportError:
     logger.warning("MiService库不可用，将使用模拟服务")
 
 from app.config import get_settings
-from app.models.speak import DeviceInfo
+from app.schemas.speak import DeviceInfo
 
 
 class MiServiceWrapper:

@@ -1,0 +1,350 @@
+/* ============================================================
+   爱通知 AiNotice — 基础层 (base.css)
+   reset / 排版 / 点阵氛围 / 动效工具 / 滚动条
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+/* ---- 全局点阵网格氛围（极淡，固定不随滚动）---- */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--dot-grid);
+  background-size: 22px 22px;
+  opacity: 0.035;
+}
+
+/* ---- 顶部信号光晕：面板背后的橙色微光 ---- */
+body::after {
+  content: '';
+  position: fixed;
+  top: -320px;
+  left: 50%;
+  width: 900px;
+  height: 620px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 105, 0, 0.07),
+    rgba(255, 105, 0, 0) 68%
+  );
+}
+
+/* ---------- 排版 ---------- */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+h2 {
+  font-size: 1.15rem;
+}
+h3 {
+  font-size: 1rem;
+}
+
+p {
+  line-height: 1.7;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+b,
+strong {
+  font-weight: 700;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+/* 数字/ID/时间戳/路径统一等宽：给元素加 .mono 或 .num 即可 */
+.mono,
+.num {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 工业感小标签：全大写 + 宽字距 */
+.tag-mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+.text-dim {
+  color: var(--text-dim);
+}
+.text-mute {
+  color: var(--text-mute);
+}
+.text-accent {
+  color: var(--accent);
+}
+.text-green {
+  color: var(--signal-green);
+}
+.text-red {
+  color: var(--signal-red);
+}
+.text-warn {
+  color: var(--warn);
+}
+.text-info {
+  color: var(--info);
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.break-all {
+  word-break: break-all;
+}
+
+/* ---------- 焦点可见：橙色描边（键盘可达性）---------- */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-deep);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid var(--bg-deep);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #44506a;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--bg-deep);
+}
+
+/* ---------- 页面进入：交错入场动效 ---------- */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ledPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes signalSweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 给内容块加 .stagger，其直接子元素按 40ms 递增入场 */
+.stagger > * {
+  animation: fadeUp var(--dur-slow) var(--ease) both;
+}
+.stagger > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger > *:nth-child(6) {
+  animation-delay: 200ms;
+}
+.stagger > *:nth-child(7) {
+  animation-delay: 240ms;
+}
+.stagger > *:nth-child(8) {
+  animation-delay: 280ms;
+}
+.stagger > *:nth-child(9) {
+  animation-delay: 320ms;
+}
+.stagger > *:nth-child(10) {
+  animation-delay: 360ms;
+}
+
+/* 路由切换过渡 */
+.route-fade-enter-active {
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease);
+}
+.route-fade-leave-active {
+  transition: opacity 120ms var(--ease);
+}
+.route-fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.route-fade-leave-to {
+  opacity: 0;
+}
+
+/* ---------- 无障碍：跳过导航 ---------- */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 12px;
+  z-index: 200;
+  padding: 8px 14px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--r-md);
+  font-size: 13px;
+}
+.skip-link:focus {
+  top: 12px;
+  color: #fff;
+}
+
+/* ---------- 降级动效（必须放在最后以覆盖）---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .stagger > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

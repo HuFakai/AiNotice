@@ -6,16 +6,60 @@ FastAPI应用程序入口点
 
 import os
 import sys
+import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from typing import Awaitable, Set
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 import uvicorn
 
 from app.config import get_settings
+from app.dependencies import get_db
 from app.routers import speak
+
+
+# 应用派生的后台任务集合：持有强引用防止被 GC，并在应用关闭时尽力收敛。
+# 用法：spawn("任务名", coro) 即可。
+_background_tasks: Set[asyncio.Task] = set()
+
+
+def spawn(name: str, coro: Awaitable) -> asyncio.Task:
+    """派生一个后台任务并纳入关闭收敛集合（自动 discard）"""
+    task = asyncio.create_task(coro, name=name)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(_log_task_failure)
+    return task
+
+
+def _log_task_failure(task: asyncio.Task) -> None:
+    """后台任务异常兜底记录（避免异常被静默吞掉）"""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error(f"后台任务 {task.get_name()} 异常退出: {exc}")
+
+
+async def _drain_background_tasks(timeout: float = 5.0) -> None:
+    """关闭时对在途后台任务做一次尽力收敛：先等待，超时后取消。"""
+    pending = [t for t in _background_tasks if not t.done()]
+    if not pending:
+        return
+    logger.info(f"正在等待 {len(pending)} 个在途后台任务完成（最多 {timeout} 秒）...")
+    done, still_pending = await asyncio.wait(pending, timeout=timeout)
+    for task in still_pending:
+        task.cancel()
+    if still_pending:
+        await asyncio.gather(*still_pending, return_exceptions=True)
+        logger.warning(f"已取消 {len(still_pending)} 个未在超时内完成的后台任务")
+    else:
+        logger.info(f"在途后台任务已全部收敛（{len(done)} 个）")
 
 
 # 配置日志
@@ -61,6 +105,12 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 爱通知小爱音箱消息推送统一API平台服务启动中...")
 
     try:
+        # 密钥安全检查：弱默认 JWT/加密密钥自动生成强随机值并写回 .env
+        # （必须在任何 JWT 签发/数据加解密发生之前执行）
+        from app.utils.security_keys import ensure_strong_secrets
+
+        ensure_strong_secrets()
+
         # 初始化服务
         settings = get_settings()
         logger.info(f"配置加载完成: 调试模式={settings.api_debug}")
@@ -106,7 +156,13 @@ async def lifespan(app: FastAPI):
         logger.info("定时任务调度器已关闭")
     except Exception as e:
         logger.error(f"关闭定时任务调度器失败: {e}")
-    
+
+    # 对在途后台任务做一次尽力收敛（等待/超时取消），避免关闭时挂起或泄漏
+    try:
+        await _drain_background_tasks()
+    except Exception as e:
+        logger.error(f"后台任务收敛失败: {e}")
+
     # 清理任务
     try:
         from app.services.speak_service import speak_service
@@ -158,10 +214,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
-    # 添加API调用记录中间件
-    from app.middleware import ApiLoggingMiddleware
-    app.add_middleware(ApiLoggingMiddleware)
+
+    # 说明：原 ApiLoggingMiddleware 已删除（include_paths 恒为空从不生效，
+    # 且其内部存在同步 requests.get 外部调用会阻塞事件循环）。
 
     # 添加路由
     from app.routers.auth import router as auth_router
@@ -179,7 +234,36 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router, prefix="/api/v1")
     app.include_router(notification_channels_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
-    app.include_router(speak.router)
+    # speak 路由自身 prefix="/speak"，与其它 router 一致由这里统一加 /api/v1
+    app.include_router(speak.router, prefix="/api/v1")
+
+    # 全局健康检查（唯一实现）：
+    # 原 speak.py 与 analytics.py 各自注册了健康检查（前者 /api/v1/health 且不查库，
+    # 后者 /api/v1/analytics/health），实现分裂且互相遮蔽。
+    # 现统一收敛到此处：检查数据库连通性并返回服务版本。
+    # 同时保留 /api/v1/analytics/health 别名，兼容既有调用方（同一实现，不再各写一份）。
+    @app.get("/api/v1/health", tags=["健康检查"], summary="健康检查")
+    @app.get("/api/v1/analytics/health", tags=["健康检查"], include_in_schema=False)
+    async def health_check(db: AsyncSession = Depends(get_db)):
+        """健康检查接口：返回服务版本并探测数据库连通性"""
+        services = {"database": "unhealthy", "api": "healthy", "analytics": "healthy"}
+        healthy = False
+        try:
+            await db.execute(text("SELECT 1"))
+            services["database"] = "healthy"
+            healthy = True
+        except Exception as e:
+            services["database"] = "unhealthy"
+            services["analytics"] = "unhealthy"
+            logger.error(f"健康检查数据库探测失败: {e}")
+
+        return {
+            "success": True,
+            "status": "healthy" if healthy else "unhealthy",
+            "service": "miAPI",
+            "version": app.version,
+            "services": services,
+        }
 
     # 全局异常处理器
     @app.exception_handler(Exception)
@@ -191,92 +275,35 @@ def create_app() -> FastAPI:
             content={"success": False, "message": "服务器内部错误", "detail": str(exc) if settings.api_debug else "请联系管理员"},
         )
 
-    # 挂载静态文件
+    # 挂载前端
+    # Vue 3 SPA（Vite 构建产物 frontend/dist）：静态资源 + history 路由 fallback。
+    # 任何目录缺失都不能导致应用启动失败。
     frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
-    if os.path.exists(frontend_path):
-        # 挂载静态资源
-        app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
-        app.mount("/css", StaticFiles(directory=os.path.join(frontend_path, "css")), name="css")
-        app.mount("/js", StaticFiles(directory=os.path.join(frontend_path, "js")), name="js")
-        
-        # 前端页面路由
-        @app.get("/pages/{page_name}")
-        async def serve_page(page_name: str):
-            """提供前端页面"""
-            page_path = os.path.join(frontend_path, "pages", page_name)
-            if os.path.exists(page_path) and page_name.endswith(".html"):
-                return FileResponse(page_path)
-            return JSONResponse(status_code=404, content={"detail": "Page not found"})
-        
-        # 具体页面路由
-        @app.get("/login")
-        async def login_page():
-            """登录页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "login.html"))
-        
-        @app.get("/register")
-        async def register_page():
-            """注册页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "register.html"))
-        
-        @app.get("/dashboard")
-        async def dashboard_page():
-            """仪表板页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "dashboard.html"))
-        
-        @app.get("/devices")
-        async def devices_page():
-            """设备管理页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "devices.html"))
-        
-        @app.get("/mi-accounts")
-        async def mi_accounts_page():
-            """小米账户管理页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "mi-accounts.html"))
-        
-        @app.get("/api-keys")
-        async def api_keys_page():
-            """API密钥管理页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "api-keys.html"))
-        
-        @app.get("/analytics")
-        async def analytics_page():
-            """数据分析页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "analytics.html"))
-        
-        @app.get("/channels")
-        async def channels_page():
-            """通知渠道管理页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "channels.html"))
-        
-        @app.get("/profile")
-        async def profile_page():
-            """用户资料页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "profile.html"))
-        
-        @app.get("/docs-page")
-        async def docs_page():
-            """文档页面"""
-            return FileResponse(os.path.join(frontend_path, "pages", "docs.html"))
-        
-        # 根路径重定向到前端首页
-        @app.get("/", summary="前端首页")
-        async def root():
-            """根路径，返回前端首页"""
-            index_path = os.path.join(frontend_path, "pages", "index.html")
-            if os.path.exists(index_path):
+    vite_dist = os.path.join(frontend_path, "dist")
+
+    if os.path.isdir(vite_dist):
+        assets_dir = os.path.join(vite_dist, "assets")
+        if os.path.isdir(assets_dir):
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="spa-assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False, summary="SPA 入口")
+        async def spa_fallback(full_path: str):
+            """history 路由 fallback：非 API 的 GET 请求一律回退到 index.html"""
+            if full_path.startswith("api/") or full_path == "api":
+                return JSONResponse(status_code=404, content={"success": False, "message": "接口不存在"})
+            candidate = os.path.normpath(os.path.join(vite_dist, full_path))
+            # 防路径穿越：候选文件必须仍在 dist 目录内
+            if candidate.startswith(os.path.normpath(vite_dist)) and os.path.isfile(candidate):
+                return FileResponse(candidate)
+            index_path = os.path.join(vite_dist, "index.html")
+            if os.path.isfile(index_path):
                 return FileResponse(index_path)
-            # 如果前端文件不存在，返回API信息
-            return {
-                "service": "爱通知小爱音箱消息推送统一API平台",
-                "version": "1.0.0",
-                "status": "running",
-                "docs": "/docs",
-                "redoc": "/redoc",
-                "health": "/api/v1/health",
-            }
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
     else:
-        # 如果没有前端文件，保持原有的API根路径
+        # 没有可用前端构建产物时，保持API根路径
+        logger.warning(f"未找到前端构建产物 ({vite_dist})，请执行: cd frontend && npm run build")
+
         @app.get("/", summary="API根路径")
         async def root():
             """API根路径，返回基本信息"""
