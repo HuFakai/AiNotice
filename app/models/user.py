@@ -56,6 +56,14 @@ class User(Base):
         "UserActivity", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
 
+    notification_channels: Mapped[List["NotificationChannel"]] = relationship(
+        "NotificationChannel", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    notification_logs: Mapped[List["NotificationLog"]] = relationship(
+        "NotificationLog", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+
     # 索引
     __table_args__ = (
         Index("idx_username", "username"),

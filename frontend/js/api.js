@@ -128,7 +128,7 @@ class ApiClient {
      * GET请求
      */
     async get(endpoint, params = {}) {
-        const url = new URL(`${this.baseURL}${endpoint}`);
+        const url = new URL(`${this.baseURL}${endpoint}`, window.location.origin);
         Object.keys(params).forEach(key => {
             if (params[key] !== undefined && params[key] !== null) {
                 url.searchParams.append(key, params[key]);
@@ -436,6 +436,50 @@ class ApiClient {
     async setVolume(volumeData) {
         const { device_id, volume } = volumeData;
         return await this.post(`/devices/${device_id}/volume?volume=${volume}`);
+    }
+
+    // ==================== 通知渠道管理API ====================
+
+    /**
+     * 获取通知渠道列表
+     */
+    async getChannels() {
+        return await this.get('/channels');
+    }
+
+    /**
+     * 创建通知渠道
+     */
+    async createChannel(channelData) {
+        return await this.post('/channels', channelData);
+    }
+
+    /**
+     * 更新通知渠道
+     */
+    async updateChannel(channelId, channelData) {
+        return await this.put(`/channels/${channelId}`, channelData);
+    }
+
+    /**
+     * 删除通知渠道
+     */
+    async deleteChannel(channelId) {
+        return await this.delete(`/channels/${channelId}`);
+    }
+
+    /**
+     * 测试通知渠道
+     */
+    async testChannel(channelId) {
+        return await this.post(`/channels/${channelId}/test`);
+    }
+
+    /**
+     * 统一推送消息
+     */
+    async sendNotification(notificationData) {
+        return await this.post('/notify/send', notificationData);
     }
 
     // ==================== 系统API ====================

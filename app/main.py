@@ -169,12 +169,16 @@ def create_app() -> FastAPI:
     from app.routers.api_keys import router as api_keys_router
     from app.routers.mi_accounts import router as mi_accounts_router
     from app.routers.analytics import router as analytics_router
+    from app.routers.notification_channels import router as notification_channels_router
+    from app.routers.notifications import router as notifications_router
 
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(user_router, prefix="/api/v1")
     app.include_router(api_keys_router, prefix="/api/v1")
     app.include_router(mi_accounts_router, prefix="/api/v1")
     app.include_router(analytics_router, prefix="/api/v1")
+    app.include_router(notification_channels_router, prefix="/api/v1")
+    app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(speak.router)
 
     # 全局异常处理器
@@ -239,6 +243,11 @@ def create_app() -> FastAPI:
         async def analytics_page():
             """数据分析页面"""
             return FileResponse(os.path.join(frontend_path, "pages", "analytics.html"))
+        
+        @app.get("/channels")
+        async def channels_page():
+            """通知渠道管理页面"""
+            return FileResponse(os.path.join(frontend_path, "pages", "channels.html"))
         
         @app.get("/profile")
         async def profile_page():

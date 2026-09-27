@@ -470,11 +470,24 @@ class ModalManager {
     }
 }
 
+/**
+ * HTML 转义函数
+ */
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#039;');
+}
+
 // 全局实例
 window.modalManager = new ModalManager();
 
 // 工具函数绑定到全局
 window.utils = {
+    escapeHtml,
     formatDateTime,
     formatRelativeTime,
     copyToClipboard,

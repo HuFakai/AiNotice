@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通知渠道管理 - 爱通知</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico">
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .channels-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: var(--spacing-lg);
+            margin-top: var(--spacing-md);
+        }
+
+        .channel-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-lg);
+            box-shadow: var(--shadow-sm);
+            transition: all var(--transition-normal);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 200px;
+        }
+
+        .channel-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            border-color: var(--primary-color);
+        }
+
+        .channel-card-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .channel-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-md);
+            display: grid;
+            place-items: center;
+            font-size: 20px;
+            color: #fff;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            box-shadow: 0 4px 10px rgba(79, 70, 229, 0.2);
+        }
+
+        .channel-icon.email { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
+        .channel-icon.dingtalk { background: linear-gradient(135deg, #007fff, #3399ff); }
+        .channel-icon.wechat { background: linear-gradient(135deg, #07c160, #22d3ee); }
+        .channel-icon.feishu { background: linear-gradient(135deg, #3aa5ff, #818cf8); }
+        .channel-icon.webhook { background: linear-gradient(135deg, #6b7280, #9ca3af); }
+        .channel-icon.speak { background: linear-gradient(135deg, #ef4444, #f87171); }
+
+        .channel-info {
+            flex: 1;
+        }
+
+        .channel-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .channel-type-badge {
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: var(--radius-full);
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            display: inline-block;
+        }
+
+        .channel-details {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            margin: var(--spacing-md) 0;
+            line-height: 1.5;
+            flex-grow: 1;
+            word-break: break-all;
+        }
+
+        .channel-card-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--spacing-sm);
+            border-top: 1px solid var(--border);
+            padding-top: var(--spacing-sm);
+            margin-top: var(--spacing-sm);
+        }
+
+        .config-field-group {
+            display: none;
+        }
+
+        .config-field-group.active {
+            display: block;
+        }
+
+        /* 模态框特定尺寸 */
+        .channel-modal .modal {
+            max-width: 580px;
+        }
+
+        .badge-active { background: var(--success-50); color: var(--success); }
+        .badge-inactive { background: var(--gray-100); color: var(--gray-500); }
+    </style>
+</head>
+<body data-page="channels" data-title="通知渠道">
+
+    <div class="container">
+        <div class="content-wrapper">
+            <!-- 页面头部 -->
+            <div class="page-header flex justify-between items-center flex-wrap gap-md">
+                <div>
+                    <h1 class="page-title">通知渠道管理</h1>
+                    <p class="page-description">在此添加和维护不同的通知发送渠道（如邮件、群机器人等），并在 API 发送时进行绑定</p>
+                </div>
+                <div class="flex gap-sm">
+                    <button class="btn btn-outline" onclick="loadChannels()">
+                        🔄 刷新
+                    </button>
+                    <button class="btn btn-primary" onclick="openCreateModal()">
+                        ➕ 新增渠道
+                    </button>
+                </div>
+            </div>
+
+            <!-- 通道列表 -->
+            <div id="channelsList" class="channels-grid">
+                <div class="loading-container">
+                    <div class="loading-spinner"></div>
+                    <p>正在加载通知渠道...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增/编辑渠道模态框 -->
+    <div id="channelModal" class="modal-overlay channel-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">新增通知渠道</h3>
+                <button class="modal-close" onclick="closeModal('channelModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="channelForm">
+                    <input type="hidden" id="channelId" name="channel_id">
+                    
+                    <div class="form-group">
+                        <label for="channelName" class="form-label">渠道名称</label>
+                        <input 
+                            type="text" 
+                            id="channelName" 
+                            name="name" 
+                            class="form-input" 
+                            placeholder="如：项目报警邮件、飞书日常打卡群" 
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="channelType" class="form-label">渠道类型</label>
+                        <select id="channelType" name="channel_type" class="form-select" onchange="toggleConfigFields()" required>
+                            <option value="" disabled selected>选择通知渠道类型</option>
+                            <option value="email">📧 SMTP 邮箱推送</option>
+                            <option value="dingtalk">💬 钉钉群机器人</option>
+                            <option value="feishu">🕊️ 飞书群机器人</option>
+                            <option value="wechat">🏢 企业微信机器人</option>
+                            <option value="webhook">⚓ 自定义 HTTP Webhook</option>
+                            <option value="speak">📢 小爱音箱语音播报</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label flex items-center gap-sm">
+                            <input type="checkbox" id="channelActive" name="is_active" checked style="width:16px;height:16px;">
+                            <span>启用该通知渠道</span>
+                        </label>
+                    </div>
+
+                    <!-- SMTP 邮件配置 -->
+                    <div id="config_email" class="config-field-group">
+                        <h4 class="mb-sm text-secondary" style="border-bottom:1px solid var(--border);padding-bottom:6px;">SMTP 邮箱配置</h4>
+                        <div class="grid grid-cols-2 gap-md">
+                            <div class="form-group">
+                                <label for="email_smtp_host" class="form-label">SMTP 主机</label>
+                                <input type="text" id="email_smtp_host" class="form-input" placeholder="如 smtp.qq.com">
+                            </div>
+                            <div class="form-group">
+                                <label for="email_smtp_port" class="form-label">SMTP 端口</label>
+                                <input type="number" id="email_smtp_port" class="form-input" placeholder="端口号如 465">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-md">
+                            <div class="form-group">
+                                <label for="email_smtp_user" class="form-label">账号用户名</label>
+                                <input type="email" id="email_smtp_user" class="form-input" placeholder="你的邮箱账号">
+                            </div>
+                            <div class="form-group">
+                                <label for="email_smtp_password" class="form-label">密码 / 授权码</label>
+                                <input type="password" id="email_smtp_password" class="form-input" placeholder="请输入密码或SMTP授权码">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-md">
+                            <div class="form-group">
+                                <label for="email_from_address" class="form-label">发送人邮箱 (From)</label>
+                                <input type="email" id="email_from_address" class="form-input" placeholder="留空默认使用用户名">
+                            </div>
+                            <div class="form-group">
+                                <label for="email_to_addresses" class="form-label">默认接收邮箱 (To)</label>
+                                <input type="email" id="email_to_addresses" class="form-input" placeholder="如接收告警的邮箱">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 钉钉配置 -->
+                    <div id="config_dingtalk" class="config-field-group">
+                        <h4 class="mb-sm text-secondary" style="border-bottom:1px solid var(--border);padding-bottom:6px;">钉钉机器人配置</h4>
+                        <div class="form-group">
+                            <label for="dingtalk_webhook_url" class="form-label">Webhook URL</label>
+                            <input type="url" id="dingtalk_webhook_url" class="form-input" placeholder="https://oapi.dingtalk.com/robot/send?access_token=...">
+                        </div>
+                        <div class="form-group">
+                            <label for="dingtalk_secret" class="form-label">安全签名密钥 (Secret)</label>
+                            <input type="text" id="dingtalk_secret" class="form-input" placeholder="如果机器人配置了签名校验，请在此填入">
+                        </div>
+                        <div class="form-group">
+                            <label for="dingtalk_msg_type" class="form-label">消息格式</label>
+                            <select id="dingtalk_msg_type" class="form-select">
+                                <option value="text">纯文本 (Text)</option>
+                                <option value="markdown">Markdown 格式</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 飞书配置 -->
+                    <div id="config_feishu" class="config-field-group">
+                        <h4 class="mb-sm text-secondary" style="border-bottom:1px solid var(--border);padding-bottom:6px;">飞书机器人配置</h4>
+                        <div class="form-group">
+                            <label for="feishu_webhook_url" class="form-label">Webhook URL</label>
+                            <input type="url" id="feishu_webhook_url" class="form-input" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+                        </div>
+                        <div class="form-group">
+                            <label for="feishu_secret" class="form-label">安全签名密钥 (Secret)</label>
+                            <input type="text" id="feishu_secret" class="form-input" placeholder="如果机器人配置了签名校验，请在此填入">
+                        </div>
+                        <div class="form-group">
+                            <label for="feishu_msg_type" class="form-label">消息格式</label>
+                            <select id="feishu_msg_type" class="form-select">
+                                <option value="text">纯文本 (Text)</option>
+                                <option value="post">富文本帖子 (Post)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 企业微信配置 -->
+                    <div id="config_wechat" class="config-field-group">
+                        <h4 class="mb-sm text-secondary" style="border-bottom:1px solid var(--border);padding-bottom:6px;">企业微信机器人配置</h4>
+                        <div class="form-group">
+                            <label for="wechat_webhook_url" class="form-label">Webhook URL</label>
+                            <input type="url" id="wechat_webhook_url" class="form-input" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+                        </div>
+                        <div class="form-group">
+                            <label for="wechat_msg_type" class="form-label">消息格式</label>
+                            <select id="wechat_msg_type" class="form-select">
+                                <option value="text">纯文本 (Text)</option>
+                                <option value="markdown">Markdown 格式</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 通用 Webhook 配置 -->
+                    <div id="config_webhook" class="config-field-group">
+                        <h4 class="mb-sm text-secondary" style="border-bottom:1px solid var(--border);padding-bottom:6px;">通用 HTTP Webhook 配置</h4>
+                        <div class="form-group">
+                            <label for="webhook_url" class="form-label">接口 URL (Callback URL)</label>
+                            <input type="url" id="webhook_url" class="form-input" placeholder="https://yourdomain.com/api/callback">
+                        </div>
+                        <div class="grid grid-cols-2 gap-md">
+                            <div class="form-group">
+                                <label for="webhook_method" class="form-label">请求方法</label>
+                                <select id="webhook_method" class="form-select">
+                                    <option value="POST">POST (推荐)</option>
+                                    <option value="GET">GET</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="webhook_headers" class="form-label">自定义 Headers (JSON 格式)</label>
+                                <input type="text" id="webhook_headers" class="form-input" placeholder='{"Authorization": "Token xxx"}'>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 小爱音箱配置 -->
+                    <div id="config_speak" class="config-field-group">
+                        <h4 class="mb-sm text-secondary" style="border-bottom:1px solid var(--border);padding-bottom:6px;">小爱音箱默认参数配置</h4>
+                        <div class="form-group">
+                            <label for="speak_device_id" class="form-label">默认播报设备ID (Device ID)</label>
+                            <input type="text" id="speak_device_id" class="form-input" placeholder="设备唯一did（可在设备管理页面复制）">
+                        </div>
+                        <div class="grid grid-cols-2 gap-md">
+                            <div class="form-group">
+                                <label for="speak_volume" class="form-label">播报时音量 (0-100)</label>
+                                <input type="number" id="speak_volume" class="form-input" placeholder="留空不调整，如 80" min="0" max="100">
+                            </div>
+                            <div class="form-group">
+                                <label for="speak_endvolume" class="form-label">播报完恢复音量 (0-100)</label>
+                                <input type="number" id="speak_endvolume" class="form-input" placeholder="不恢复留空，如 50" min="0" max="100">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-md">
+                            <div class="form-group">
+                                <label for="speak_speed" class="form-label">播报语速 (0.5 - 2.0)</label>
+                                <input type="number" id="speak_speed" class="form-input" placeholder="如 1.0" min="0.5" max="2.0" step="0.1" value="1.0">
+                            </div>
+                            <div class="form-group">
+                                <label for="speak_voice_type" class="form-label">播报音色</label>
+                                <select id="speak_voice_type" class="form-select">
+                                    <option value="female">标准女声 (Female)</option>
+                                    <option value="male">标准男声 (Male)</option>
+                                    <option value="child">可爱童声 (Child)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('channelModal')">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitChannel()" id="saveBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 脚本加载 -->
+    <script src="../js/utils.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/layout.js"></script>
+    <script src="../js/channels.js"></script>
+    <script>
+        // 挂载布局外壳并做登录拦截
+        Layout.mount();
+    </script>
+</body>
+</html>

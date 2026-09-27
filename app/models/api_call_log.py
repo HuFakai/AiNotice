@@ -19,7 +19,7 @@ class ApiCallLog(Base):
     __tablename__ = "api_call_logs"
 
     # 基础字段
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, comment="记录ID")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="记录ID")
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, comment="用户ID")
     api_key_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("api_keys.id"), comment="API密钥ID")
     

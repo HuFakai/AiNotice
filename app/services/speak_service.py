@@ -98,6 +98,8 @@ class SpeakService:
                 service = await self._get_user_mi_service(user_id)
                 if not service:
                     return SpeakResponse(success=False, message="无法获取小米服务实例")
+                # 仅用于验证，验证后立即关闭释放资源
+                await service.close()
             else:
                 # 验证全局设备
                 for device_id in device_ids:
@@ -235,6 +237,7 @@ class SpeakService:
 
         # 创建独立会话
         session: Optional[AsyncSession] = None
+        service = None
         try:
             session = db if db is not None else AsyncSessionLocal()
 
@@ -416,6 +419,14 @@ class SpeakService:
         finally:
             if session is not None and db is None:
                 await session.close()
+            # 如果是临时创建的专属服务实例，需要手动关闭以释放 session 资源
+            if use_user_account and service is not None:
+                try:
+                    logger.info("正在清理专属服务实例 session...")
+                    await service.close()
+                    logger.info("专属服务实例 session 清理完成。")
+                except Exception as close_err:
+                    logger.warning(f"清理专属服务实例 session 失败: {close_err}")
     
     async def _update_api_log(
         self, 
@@ -581,6 +592,7 @@ class SpeakService:
                 return {"success": False, "error": "音量必须在0-100之间"}
 
             # 如果有用户ID，使用用户专属的MiService
+            service = None
             if user_id:
                 if not _MISERVICE_AVAILABLE:
                     return {"success": False, "error": "MiService库不可用"}
@@ -591,6 +603,12 @@ class SpeakService:
                     result = await service.set_volume(device_id, volume)
                 except Exception as e:
                     result = {"success": False, "error": str(e)}
+                finally:
+                    if service is not None:
+                        try:
+                            await service.close()
+                        except Exception as close_err:
+                            logger.warning(f"关闭专属服务实例 session 失败: {close_err}")
             else:
                 # 使用全局MiService
                 result = await mi_service_wrapper.set_volume(device_id, volume)

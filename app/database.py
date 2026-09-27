@@ -109,11 +109,48 @@ async def init_database():
             await conn.run_sync(Base.metadata.create_all)
 
         logger.info(f"数据库初始化成功 - {engine.url.render_as_string(hide_password=True)}")
+        
+        # 自动植入默认配置种子数据
+        async with AsyncSessionLocal() as session:
+            await seed_initial_data(session)
+            
         return True
 
     except Exception as e:
         logger.error(f"数据库初始化失败: {e}")
         return False
+
+
+async def seed_initial_data(session: AsyncSession):
+    """为系统配置表种初始值（数据库无关，同时支持 SQLite/PostgreSQL/MySQL）"""
+    try:
+        from app.models.system_setting import SystemSetting, SettingType
+        from sqlalchemy import select
+        
+        # 检查是否已包含配置项
+        result = await session.execute(select(SystemSetting))
+        existing = result.scalars().first()
+        if existing:
+            return
+            
+        logger.info("系统配置为空，正在初始化默认种子数据...")
+        initial_settings = [
+            SystemSetting(setting_key='platform_name', setting_value='爱通知消息推送统一API平台', setting_type=SettingType.STRING, description='平台名称', is_public=True),
+            SystemSetting(setting_key='platform_version', setting_value='1.0.0', setting_type=SettingType.STRING, description='平台版本', is_public=True),
+            SystemSetting(setting_key='registration_enabled', setting_value='true', setting_type=SettingType.BOOLEAN, description='是否允许用户注册', is_public=True),
+            SystemSetting(setting_key='api_rate_limit', setting_value='1000', setting_type=SettingType.INT, description='API调用频率限制(次/小时)', is_public=False),
+            SystemSetting(setting_key='max_devices_per_user', setting_value='10', setting_type=SettingType.INT, description='每用户最大设备数', is_public=False),
+            SystemSetting(setting_key='max_api_keys_per_user', setting_value='10', setting_type=SettingType.INT, description='每用户最大API密钥数', is_public=False),
+            SystemSetting(setting_key='jwt_secret_key', setting_value='CHANGE_ME_IN_ENV', setting_type=SettingType.STRING, description='JWT密钥（部署后请改为强随机值）', is_public=False),
+            SystemSetting(setting_key='jwt_expire_hours', setting_value='24', setting_type=SettingType.INT, description='JWT过期时间(小时)', is_public=False),
+            SystemSetting(setting_key='email_verification_required', setting_value='false', setting_type=SettingType.BOOLEAN, description='是否需要邮箱验证', is_public=True)
+        ]
+        session.add_all(initial_settings)
+        await session.commit()
+        logger.info("✅ 默认系统配置种子数据播种完成")
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"❌ 系统配置播种失败: {e}")
 
 
 async def close_database():

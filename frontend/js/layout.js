@@ -15,6 +15,7 @@
     { key: 'api-keys',   label: 'API密钥',  icon: 'fa-key',             href: '/api-keys' },
     { key: 'devices',    label: '设备管理', icon: 'fa-tower-broadcast', href: '/devices' },
     { key: 'mi-accounts',label: '小米账户', icon: 'fa-user-gear',       href: '/mi-accounts' },
+    { key: 'channels',   label: '通知渠道', icon: 'fa-bullhorn',        href: '/channels' },
     { key: 'analytics',  label: 'API统计',  icon: 'fa-chart-line',      href: '/analytics' },
     { key: 'docs',       label: '开发文档', icon: 'fa-book',            href: '/docs-page' },
     { key: 'profile',    label: '个人资料', icon: 'fa-user',            href: '/profile' },

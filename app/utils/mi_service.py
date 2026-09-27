@@ -56,11 +56,43 @@ class MiServiceWrapper:
             logger.info("使用模拟小米服务")
         else:
             logger.info("使用真实小米服务")
-
     def set_custom_auth(
         self, username: str, password: str, device_id: str = None, user_id: str = None, pass_token: str = None
     ):
         """设置自定义认证信息"""
+        # 确保先关闭旧的 session 以及 connector，防止连接和会话泄漏
+        if self._mi_account and hasattr(self._mi_account, 'session') and self._mi_account.session:
+            try:
+                session = self._mi_account.session
+                connector = getattr(session, 'connector', None)
+                
+                async def _async_close():
+                    try:
+                        # 强行关闭未被第三方库释放的 acquired 连接，防止连接泄露警告
+                        if connector and hasattr(connector, '_acquired') and connector._acquired:
+                            for conn in list(connector._acquired):
+                                try:
+                                    conn.close()
+                                except Exception:
+                                    pass
+                            try:
+                                connector._acquired.clear()
+                            except Exception:
+                                pass
+                        await session.close()
+                        if connector:
+                            await connector.close()
+                        await asyncio.sleep(0.1)
+                    except Exception as e:
+                        logger.warning(f"异步关闭旧 session/connector 异常: {e}")
+                
+                loop = asyncio.get_running_loop()
+                loop.create_task(_async_close())
+            except RuntimeError:
+                pass
+            except Exception as e:
+                logger.warning(f"调度关闭旧 session 异常: {e}")
+
         self._custom_auth = {
             "username": username,
             "password": password,
@@ -78,14 +110,68 @@ class MiServiceWrapper:
         """清除自定义认证信息"""
         self._custom_auth = None
         # 清除缓存的服务实例，强制重新创建
+        # 清除缓存的服务实例，强制重新创建，同时关闭 session 和 connector
         if self._mi_account and hasattr(self._mi_account, 'session') and self._mi_account.session:
-            # 关闭aiohttp session
-            asyncio.create_task(self._mi_account.session.close())
+            try:
+                session = self._mi_account.session
+                connector = getattr(session, 'connector', None)
+                
+                async def _async_close():
+                    try:
+                        # 强行关闭未被第三方库释放的 acquired 连接，防止连接泄露警告
+                        if connector and hasattr(connector, '_acquired') and connector._acquired:
+                            for conn in list(connector._acquired):
+                                try:
+                                    conn.close()
+                                except Exception:
+                                    pass
+                            try:
+                                connector._acquired.clear()
+                            except Exception:
+                                pass
+                        await session.close()
+                        if connector:
+                            await connector.close()
+                        await asyncio.sleep(0.1)
+                    except Exception:
+                        pass
+                
+                loop = asyncio.get_running_loop()
+                loop.create_task(_async_close())
+            except RuntimeError:
+                pass
         self._mi_service = None
         self._mi_account = None
         self._devices_cache.clear()
         logger.info("清除自定义认证信息")
 
+    async def close(self):
+        """异步关闭 aiohttp session 以及自定义的 connector"""
+        if self._mi_account and hasattr(self._mi_account, 'session') and self._mi_account.session:
+            try:
+                # 获取关联 of connector
+                connector = getattr(self._mi_account.session, 'connector', None)
+                # 强行关闭未被第三方库释放的 acquired 连接，防止 "Unclosed client session" 警告
+                if connector and hasattr(connector, '_acquired') and connector._acquired:
+                    for conn in list(connector._acquired):
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                    try:
+                        connector._acquired.clear()
+                    except Exception:
+                        pass
+                await self._mi_account.session.close()
+                if connector:
+                    await connector.close()
+                # 极其重要：等待 100ms 允许 asyncio 循环迭代并彻底释放底层连接句柄，防止抛出警告
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.warning(f"关闭 session/connector 异常: {e}")
+        self._mi_service = None
+        self._mi_account = None
+        self._devices_cache.clear()
     async def _get_mi_service(self) -> MiIOService:
         """获取MiIOService实例"""
         if self._mi_service is None:

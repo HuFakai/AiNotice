@@ -3,17 +3,13 @@
 认证工具函数
 """
 
+import bcrypt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from passlib.context import CryptContext
 from jose import JWTError, jwt
 from loguru import logger
 
 from app.config import settings
-
-
-# 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
@@ -26,7 +22,10 @@ def hash_password(password: str) -> str:
     Returns:
         哈希后的密码
     """
-    return pwd_context.hash(password)
+    pwd_bytes = password.encode("utf-8")
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed.decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -40,7 +39,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         验证结果
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    pwd_bytes = plain_password.encode("utf-8")
+    hashed_bytes = hashed_password.encode("utf-8")
+    try:
+        return bcrypt.checkpw(pwd_bytes, hashed_bytes)
+    except Exception as e:
+        logger.error(f"密码验证异常: {e}")
+        return False
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:

@@ -526,18 +526,16 @@ class MiAccountService:
                 # 先尝试使用已存储的认证信息进行简单验证
                 from app.utils.mi_service import MiServiceWrapper
                 test_wrapper = MiServiceWrapper()
-                test_wrapper.set_custom_auth(
-                    username=mi_account.mi_username,
-                    password=mi_password,
-                    device_id=mi_account.mi_device_id,
-                    user_id=mi_account.mi_user_id,
-                    pass_token=mi_account.mi_pass_token,
-                )
-                
                 try:
+                    test_wrapper.set_custom_auth(
+                        username=mi_account.mi_username,
+                        password=mi_password,
+                        device_id=mi_account.mi_device_id,
+                        user_id=mi_account.mi_user_id,
+                        pass_token=mi_account.mi_pass_token,
+                    )
                     # 尝试获取设备列表来验证认证信息是否有效
                     devices = await test_wrapper.get_devices(force_refresh=False)
-                    test_wrapper.clear_custom_auth()
                     logger.info(f"已存储的认证信息有效: {mi_account.mi_username}")
                     return {
                         "success": True,
@@ -549,9 +547,10 @@ class MiAccountService:
                         },
                     }
                 except Exception as verify_error:
-                    test_wrapper.clear_custom_auth()
                     logger.warning(f"已存储的认证信息无效，需要重新登录: {verify_error}")
                     # 继续执行新的登录验证
+                finally:
+                    await test_wrapper.close()
             
             # 如果没有完整认证信息或认证信息无效，进行新的登录验证
             logger.info(f"执行新的登录验证: {mi_account.mi_username}")
@@ -559,41 +558,36 @@ class MiAccountService:
 
             # 创建独立的MiServiceWrapper实例进行认证测试
             mi_service_wrapper = MiServiceWrapper()
-
-            # 设置自定义认证信息
-            mi_service_wrapper.set_custom_auth(username=mi_account.mi_username, password=mi_password)
-
-            # 尝试获取设备列表来验证认证
             try:
-                devices = await mi_service_wrapper.get_devices(force_refresh=True)
-                logger.info(f"认证成功，获取到 {len(devices)} 个设备")
+                # 设置自定义认证信息
+                mi_service_wrapper.set_custom_auth(username=mi_account.mi_username, password=mi_password)
 
-                # 获取认证信息（从MiAccount中提取token信息）
-                mi_service_account = mi_service_wrapper._mi_account
-                if mi_service_account and hasattr(mi_service_account, "token"):
-                    token = getattr(mi_service_account, "token", None) or {}
-                    device_id = token.get("deviceId")
-                    user_id = token.get("userId")
-                    pass_token = token.get("passToken")
+                # 尝试获取设备列表来验证认证
+                try:
+                    devices = await mi_service_wrapper.get_devices(force_refresh=True)
+                    logger.info(f"认证成功，获取到 {len(devices)} 个设备")
 
-                    # 清除自定义认证信息
-                    mi_service_wrapper.clear_custom_auth()
+                    # 获取认证信息（从MiAccount中提取token信息）
+                    mi_service_account = mi_service_wrapper._mi_account
+                    if mi_service_account and hasattr(mi_service_account, "token"):
+                        token = getattr(mi_service_account, "token", None) or {}
+                        device_id = token.get("deviceId")
+                        user_id = token.get("userId")
+                        pass_token = token.get("passToken")
 
-                    return {
-                        "success": True,
-                        "message": "认证成功",
-                        "data": {"device_id": device_id, "user_id": user_id, "pass_token": pass_token},
-                    }
-                else:
-                    # 清除自定义认证信息
-                    mi_service_wrapper.clear_custom_auth()
-                    return {"success": False, "message": "认证失败：未获取到token信息", "data": None}
+                        return {
+                            "success": True,
+                            "message": "认证成功",
+                            "data": {"device_id": device_id, "user_id": user_id, "pass_token": pass_token},
+                        }
+                    else:
+                        return {"success": False, "message": "认证失败：未获取到token信息", "data": None}
 
-            except Exception as auth_error:
-                # 清除自定义认证信息
-                mi_service_wrapper.clear_custom_auth()
-                logger.error(f"认证过程中出错: {auth_error}")
-                return {"success": False, "message": f"认证失败: {str(auth_error)}", "data": None}
+                except Exception as auth_error:
+                    logger.error(f"认证过程中出错: {auth_error}")
+                    return {"success": False, "message": f"认证失败: {str(auth_error)}", "data": None}
+            finally:
+                await mi_service_wrapper.close()
 
         except Exception as e:
             logger.error(f"小米账户认证失败: {e}")
@@ -640,12 +634,11 @@ class MiAccountService:
 
     async def _get_mi_devices_with_wrapper(self, mi_account: MiAccount) -> List[Dict[str, Any]]:
         """使用MiServiceWrapper获取小米设备列表"""
+        from app.utils.mi_service import MiServiceWrapper
+
+        # 创建独立的MiServiceWrapper实例
+        mi_service_wrapper = MiServiceWrapper()
         try:
-            from app.utils.mi_service import MiServiceWrapper
-
-            # 创建独立的MiServiceWrapper实例
-            mi_service_wrapper = MiServiceWrapper()
-
             # 解密密码
             mi_password = decrypt_password(mi_account.mi_password_encrypted)
 
@@ -676,14 +669,13 @@ class MiAccountService:
                     }
                 )
 
-            # 清除自定义认证信息
-            mi_service_wrapper.clear_custom_auth()
-
             return normalized
 
         except Exception as e:
             logger.error(f"获取小米设备失败: {e}")
             return []
+        finally:
+            await mi_service_wrapper.close()
 
     async def _get_mi_devices(self, mi_account: MiAccount) -> List[Dict[str, Any]]:
         """获取小米设备列表（真实MiService）- 保留原方法作为备用"""
