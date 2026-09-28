@@ -400,7 +400,7 @@ async def get_qr_login_status(
     result = await mi_qr_login_service.poll_status(session_id, current_user.id)
 
     if result.get("status") == "confirmed":
-        payload = mi_qr_login_service.consume_result(session_id, current_user.id)
+        payload = await mi_qr_login_service.consume_result(session_id, current_user.id)
         if payload:
             mi_account_service = MiAccountService(db)
             success, message, account_data = await mi_account_service.create_mi_account_from_token(
@@ -412,6 +412,7 @@ async def get_qr_login_status(
             else:
                 result["status"] = "error"
                 result["message"] = message
+                await mi_qr_login_service.mark_error(session_id, current_user.id, message)
 
     return QrStatusResponse(**result)
 

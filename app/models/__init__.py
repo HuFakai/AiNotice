@@ -13,6 +13,7 @@ from .system_setting import SystemSetting
 from .api_call_log import ApiCallLog, ApiUsageStats, ApiQuota
 from .notification_channel import NotificationChannel
 from .notification_log import NotificationLog
+from .mi_qr_session import MiQrSession
 
 __all__ = [
     "User",
@@ -27,4 +28,5 @@ __all__ = [
     "ApiQuota",
     "NotificationChannel",
     "NotificationLog",
+    "MiQrSession",
 ]

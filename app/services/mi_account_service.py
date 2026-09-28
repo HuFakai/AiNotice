@@ -173,7 +173,7 @@ class MiAccountService:
                     "id": account_id,
                     "mi_username": mi_username,
                     "sync_status": SyncStatus.PENDING.value,
-                    "created_at": datetime.utcnow(),
+                    "created_at": datetime.now(timezone.utc),
                 },
             )
 
@@ -442,7 +442,7 @@ class MiAccountService:
                 return False, "小米账户不存在"
 
             mi_account.is_active = is_active
-            mi_account.updated_at = datetime.utcnow()
+            mi_account.updated_at = datetime.now(timezone.utc)
             await self.db.commit()
 
             status_text = "启用" if is_active else "禁用"
@@ -595,7 +595,7 @@ class MiAccountService:
                         mi_account.mi_pass_token = _store_pass_token(auth_result["data"].get("pass_token"))
                     mi_account.sync_status = SyncStatus.SUCCESS
                     mi_account.error_message = None
-                    mi_account.last_sync_at = datetime.utcnow()
+                    mi_account.last_sync_at = datetime.now(timezone.utc)
 
                     # 同步设备
                     await self._sync_devices(session, mi_account)
@@ -605,7 +605,7 @@ class MiAccountService:
                     # 同步失败
                     mi_account.sync_status = SyncStatus.FAILED
                     mi_account.error_message = auth_result["message"]
-                    mi_account.last_sync_at = datetime.utcnow()
+                    mi_account.last_sync_at = datetime.now(timezone.utc)
 
                     logger.error(f"小米账户认证失败: {auth_result['message']}")
 
@@ -615,7 +615,7 @@ class MiAccountService:
                 # 同步异常
                 mi_account.sync_status = SyncStatus.FAILED
                 mi_account.error_message = f"同步异常: {str(sync_error)}"
-                mi_account.last_sync_at = datetime.utcnow()
+                mi_account.last_sync_at = datetime.now(timezone.utc)
 
                 await session.commit()
                 logger.error(f"小米账户同步异常: {sync_error}")
@@ -662,11 +662,26 @@ class MiAccountService:
                         },
                     }
                 except Exception as verify_error:
-                    logger.warning(f"已存储的认证信息无效，需要重新登录: {verify_error}")
-                    # 继续执行新的登录验证
+                    logger.warning(f"已存储的认证信息无效: {verify_error}")
+                    # 扫码账户没有密码凭据，passToken 失效后无法自动续期，必须重新扫码
+                    if not mi_password:
+                        return {
+                            "success": False,
+                            "message": "扫码登录凭据已过期，请重新扫码登录以更新凭据",
+                            "data": None,
+                        }
+                    # 密码账户继续执行新的登录验证
                 finally:
                     await test_wrapper.close()
             
+            # 扫码账户（无密码）缺少完整 token 时无法自动续期
+            if not mi_password:
+                return {
+                    "success": False,
+                    "message": "扫码登录凭据不完整，请重新扫码登录以更新凭据",
+                    "data": None,
+                }
+
             # 如果没有完整认证信息或认证信息无效，进行新的登录验证
             logger.info(f"执行新的登录验证: {mi_account.mi_username}")
             from app.utils.mi_service import MiServiceWrapper
