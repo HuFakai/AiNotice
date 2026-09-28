@@ -8,25 +8,36 @@
 """
 
 from typing import Optional, Literal, Union, List
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, root_validator
 
 
 class SpeakRequest(BaseModel):
     """语音播放请求模型"""
 
-    text: str = Field(..., min_length=1, max_length=500, description="要播放的文字内容")
+    text: Optional[str] = Field(None, min_length=1, max_length=500, description="要播放的文字内容（与 url 二选一）")
+    url: Optional[str] = Field(None, max_length=1000, description="在线音频URL（提供时播放该音频而不是TTS）")
     device_id: Optional[Union[str, List[str]]] = Field(default=None, description="指定设备ID，支持单个设备ID(字符串)或多个设备ID(数组)，不指定则使用默认设备")
     volume: Optional[int] = Field(default=None, ge=0, le=100, description="播报时音量大小(0-100)，不指定则不调整音量")
     endvolume: Optional[int] = Field(default=None, ge=0, le=100, description="播报完成后恢复的音量(0-100)，不指定则不恢复音量")
     speed: Optional[float] = Field(default=1.0, ge=0.5, le=2.0, description="语速倍率(0.5-2.0)")
     voice_type: Optional[Literal["male", "female", "child"]] = Field(default="female", description="音色类型")
 
-    @validator("text")
-    def validate_text(cls, v):
-        """验证文字内容"""
-        if not v.strip():
-            raise ValueError("文字内容不能为空")
-        return v.strip()
+    @validator("url")
+    def validate_url(cls, v, values):
+        """URL 必须是 http/https"""
+        if v is not None and not v.lower().startswith(("http://", "https://")):
+            raise ValueError("url 必须以 http:// 或 https:// 开头")
+        return v
+
+    @root_validator(skip_on_failure=True)
+    def validate_text_or_url(cls, values):
+        """text 与 url 至少提供一个"""
+        text = (values.get("text") or "").strip()
+        if not text and not values.get("url"):
+            raise ValueError("text 与 url 必须至少提供一个")
+        if text and not values.get("url"):
+            values["text"] = text
+        return values
 
 
 class SpeakResponse(BaseModel):

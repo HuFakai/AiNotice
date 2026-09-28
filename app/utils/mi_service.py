@@ -15,7 +15,7 @@ from loguru import logger
 
 # 尝试导入MiService，如果失败则使用模拟服务
 try:
-    from miservice import MiIOService, MiAccount
+    from miservice import MiIOService, MiAccount, MiNAService
 
     MISERVICE_AVAILABLE = True
     logger.info("MiService库可用，将使用真实的小米服务")
@@ -25,6 +25,9 @@ except ImportError:
         pass
 
     class MiAccount:
+        pass
+
+    class MiNAService:
         pass
 
     MISERVICE_AVAILABLE = False
@@ -41,6 +44,7 @@ class MiServiceWrapper:
         self.settings = get_settings()
         self._mi_service: Optional[MiIOService] = None
         self._mi_account: Optional[MiAccount] = None
+        self._mina_service: Optional[MiNAService] = None
         self._devices_cache: Dict[str, DeviceInfo] = {}
         self._cache_timestamp = 0
         self._cache_ttl = 300  # 缓存5分钟
@@ -103,6 +107,7 @@ class MiServiceWrapper:
         # 清除缓存的服务实例，强制重新创建
         self._mi_service = None
         self._mi_account = None
+        self._mina_service = None
         self._devices_cache.clear()
         logger.info(f"设置自定义认证信息: {username}")
 
@@ -142,6 +147,7 @@ class MiServiceWrapper:
                 pass
         self._mi_service = None
         self._mi_account = None
+        self._mina_service = None
         self._devices_cache.clear()
         logger.info("清除自定义认证信息")
 
@@ -171,7 +177,16 @@ class MiServiceWrapper:
                 logger.warning(f"关闭 session/connector 异常: {e}")
         self._mi_service = None
         self._mi_account = None
+        self._mina_service = None
         self._devices_cache.clear()
+
+    async def _get_mina_service(self) -> MiNAService:
+        """获取 MiNAService 实例（小爱音箱原生 API：TTS/URL播放/音量/停止，走 mina 通道）"""
+        if self._mina_service is None:
+            await self._get_mi_service()  # 确保 MiAccount 已构建
+            self._mina_service = MiNAService(self._mi_account)
+        return self._mina_service
+
     async def _get_mi_service(self) -> MiIOService:
         """获取MiIOService实例"""
         if self._mi_service is None:
@@ -319,46 +334,29 @@ class MiServiceWrapper:
                 target_device_id = device.device_id
                 target_device_name = device.name
 
-            mi_service = await self._get_mi_service()
+            mina = await self._get_mina_service()
 
             # 生成任务ID
             task_id = str(uuid.uuid4())
 
-            # 执行TTS播放 - 使用MiIOService的miot_action方法
-            # 根据小爱音箱的MIoT规范，siid=5为播放服务，aiid=1为TTS播放动作
-            # 尝试不同的参数格式来解决 'data type not valid' 错误
+            # 执行TTS播放：优先走 MiNA 原生通道（text_to_speech，小爱音箱官方路径），
+            # 失败时回退到 MIoT action（siid=5 播放服务 aiid=1 TTS 动作）。
+            # 参考：Yonsm/MiService 的 MiNAService 与 Do1e/mijia-api 的实现。
+            mina_ok = False
             try:
-                # 方法1: 使用字典格式的参数
+                mina_ok = await mina.text_to_speech(target_device_id, text)
+            except Exception as mina_err:
+                logger.warning(f"MiNA text_to_speech 失败: {type(mina_err).__name__}: {mina_err}，回退 MIoT")
+
+            if mina_ok:
+                result = {"mina": True, "method": "text_to_speech"}
+            else:
+                mi_service = await self._get_mi_service()
                 result = await mi_service.miot_action(
-                    target_device_id, 
-                    {"siid": 5, "aiid": 1}, 
-                    [text]
+                    target_device_id,
+                    {"siid": 5, "aiid": 1},
+                    [text],
                 )
-            except Exception as e1:
-                logger.warning(f"方法1失败: {e1}，尝试方法2")
-                try:
-                    # 方法2: 使用元组格式的参数
-                    result = await mi_service.miot_action(
-                        target_device_id, 
-                        (5, 1), 
-                        [text]
-                    )
-                except Exception as e2:
-                    logger.warning(f"方法2失败: {e2}，尝试方法3")
-                    try:
-                        # 方法3: 使用原始字符串格式但调整参数
-                        result = await mi_service.miot_action(
-                            target_device_id, 
-                            "5:1", 
-                            [text]
-                        )
-                    except Exception as e3:
-                        logger.warning(f"方法3失败: {e3}，尝试方法4")
-                        # 方法4: 使用完整的MIoT格式
-                        result = await mi_service.miot_action(
-                            target_device_id, 
-                            {"did": target_device_id, "siid": 5, "aiid": 1, "in": [text]}
-                        )
 
             logger.info(f"设备 {target_device_id} 开始播放: {text[:50]}...")
 
@@ -374,6 +372,22 @@ class MiServiceWrapper:
 
         except Exception as e:
             logger.error(f"播放失败: {e}")
+            return {"success": False, "error": str(e), "device_id": device_id}
+
+    async def play_url(self, device_id: str, url: str) -> Dict[str, Any]:
+        """让小爱音箱播放在线音频 URL（MiNA play_by_url；LX04/LX05/X08A 等型号
+        由 MiNAService 自动切换 player_play_music 通道）"""
+        if self._use_mock:
+            return {"success": True, "device_id": device_id, "url": url}
+        try:
+            mina = await self._get_mina_service()
+            ok = await mina.play_by_url(device_id, url)
+            if ok:
+                logger.info(f"设备 {device_id} 开始播放音频: {url[:60]}")
+                return {"success": True, "device_id": device_id, "url": url, "method": "play_by_url"}
+            return {"success": False, "error": "设备返回播放失败", "device_id": device_id}
+        except Exception as e:
+            logger.error(f"播放URL失败: {e}")
             return {"success": False, "error": str(e), "device_id": device_id}
 
     async def stop_speak(self, device_id: str) -> Dict[str, Any]:
@@ -392,11 +406,19 @@ class MiServiceWrapper:
         try:
             # 对于指定的device_id，直接使用，不再验证设备是否存在
             # 这避免了不必要的get_devices()调用
-            mi_service = await self._get_mi_service()
+            mina = await self._get_mina_service()
+            stopped = False
+            try:
+                stopped = await mina.player_stop(device_id)
+            except Exception as mina_err:
+                logger.warning(f"MiNA player_stop 失败: {type(mina_err).__name__}: {mina_err}，回退 MIoT")
 
-            # 执行停止播放 - 使用暂停播放动作
-            # siid=3为播放控制服务，aiid=1为暂停动作
-            result = await mi_service.miot_action(device_id, "3-1", [])
+            if not stopped:
+                mi_service = await self._get_mi_service()
+                # siid=3为播放控制服务，aiid=1为暂停动作
+                result = await mi_service.miot_action(device_id, "3-1", [])
+            else:
+                result = {"mina": True, "method": "player_stop"}
 
             logger.info(f"设备 {device_id} 停止播放")
 
@@ -434,12 +456,21 @@ class MiServiceWrapper:
             try:
                 # 对于指定的device_id，直接使用，不再验证设备是否存在
                 # 这避免了不必要的get_devices()调用
-                mi_service = await self._get_mi_service()
-                
-                # 使用MIoT协议设置音量
-                # siid=2为音频服务，piid=1为音量属性
-                result = await mi_service.miot_set_prop(device_id, (2, 1), volume)
-                
+                # 优先走 MiNA 原生 player_set_volume（ubus mediaplayer，音箱官方通道），
+                # 失败回退 MIoT 属性设置（siid=2 音频服务 piid=1 音量）
+                volume_ok = False
+                try:
+                    mina = await self._get_mina_service()
+                    volume_ok = await mina.player_set_volume(device_id, volume)
+                except Exception as mina_err:
+                    logger.warning(f"MiNA player_set_volume 失败: {type(mina_err).__name__}: {mina_err}，回退 MIoT")
+
+                if volume_ok:
+                    result = 0
+                else:
+                    mi_service = await self._get_mi_service()
+                    result = await mi_service.miot_set_prop(device_id, (2, 1), volume)
+
                 if result == 0:
                     logger.info(f"设备 {device_id} 音量设置为 {volume} (尝试 {attempt + 1}/{retry_count})")
                     return {

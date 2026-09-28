@@ -1859,3 +1859,35 @@
     padding: 12px 18px;
   }
 }
+
+/* 分段控件（模式切换） */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.seg__item {
+  padding: 5px 14px;
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.seg__item:hover {
+  color: var(--text);
+}
+
+.seg__item--on {
+  color: var(--accent);
+  background: rgba(255, 105, 0, 0.12);
+}

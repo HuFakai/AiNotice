@@ -740,7 +740,18 @@ class MiAccountService:
             # 提交删除操作
             await session.flush()
 
-            # 添加新设备
+            # 添加新设备（只入库音箱类设备，过滤掉路由器/网关等非音箱产品）
+            speaker_devices = [
+                d for d in devices_data
+                if d.get("model") and any(
+                    kw in d["model"].lower() for kw in ("wifispeaker", "speaker")
+                )
+            ]
+            skipped = len(devices_data) - len(speaker_devices)
+            if skipped:
+                logger.info(f"已过滤 {skipped} 个非音箱设备（路由器/网关等）")
+            devices_data = speaker_devices
+
             for device_data in devices_data:
                 device = Device(
                     user_id=mi_account.user_id,

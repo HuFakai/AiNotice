@@ -18,6 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.mi_account_service import MiAccountService
 from app.utils.encryption import decrypt_password
 
+
+def _load_pass_token(stored):
+    """读取 pass_token：兼容明文历史数据；加密存储走统一解密（定义见 mi_account_service）"""
+    from app.services.mi_account_service import _load_pass_token as _load
+
+    return _load(stored)
+
 # 尝试导入真实MiService
 try:
     from miservice import MiAccount as MiSvcAccount, MiIOService as MiSvcMiIOService
@@ -189,7 +196,7 @@ class SpeakService:
             )
 
             # 估算播放时长（按平均每分钟150字计算）
-            estimated_duration = len(request.text) / 150 * 60 / (request.speed or 1.0)
+            estimated_duration = 0 if getattr(request, "url", None) else len(request.text) / 150 * 60 / (request.speed or 1.0)
 
             # 根据设备数量返回相应的响应
             if len(device_ids) == 1:
@@ -260,7 +267,7 @@ class SpeakService:
             device_pk = device_row.id if device_row else None
 
             # 估算播放时长
-            estimated_duration = len(request.text) / 150 * 60 / (request.speed or 1.0)
+            estimated_duration = 0 if getattr(request, "url", None) else len(request.text) / 150 * 60 / (request.speed or 1.0)
 
             # 先写入任务记录: pending -> playing
             speak_task = None
@@ -341,14 +348,18 @@ class SpeakService:
                     logger.error(f"设置播报音量异常: {e}")
                     # 音量设置异常，但继续播放
 
-            # 步骤2: 执行语音播放
-            logger.info(f"开始语音播放: 设备={device_id}, 内容={request.text[:50]}...")
+            # 步骤2: 执行语音播放（url 存在时播放在线音频，否则 TTS 文本播报）
             try:
-                result = await service.speak_text(
-                    text=request.text,
-                    device_id=device_id,
-                    volume=None,  # 不在播放时再次设置音量，因为已经预先设置了
-                )
+                if getattr(request, "url", None):
+                    logger.info(f"开始播放音频URL: 设备={device_id}, url={request.url[:60]}...")
+                    result = await service.play_url(device_id, request.url)
+                else:
+                    logger.info(f"开始语音播放: 设备={device_id}, 内容={request.text[:50]}...")
+                    result = await service.speak_text(
+                        text=request.text,
+                        device_id=device_id,
+                        volume=None,  # 不在播放时再次设置音量，因为已经预先设置了
+                    )
 
                 # 播放成功且需要恢复音量
                 if result.get("success", False) and request.endvolume is not None:
@@ -715,7 +726,7 @@ class SpeakService:
             password=mi_password,
             device_id=chosen.mi_device_id,
             user_id=chosen.mi_user_id,
-            pass_token=chosen.mi_pass_token,
+            pass_token=_load_pass_token(chosen.mi_pass_token),  # 存储为密文，必须解密后使用
         )
 
         return mi_service_wrapper
@@ -760,7 +771,7 @@ class SpeakService:
             password=mi_password,
             device_id=chosen.mi_device_id,
             user_id=chosen.mi_user_id,
-            pass_token=chosen.mi_pass_token,
+            pass_token=_load_pass_token(chosen.mi_pass_token),  # 存储为密文，必须解密后使用
         )
 
         # 获取设备列表

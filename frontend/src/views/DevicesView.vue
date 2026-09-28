@@ -39,6 +39,8 @@ const volumeBusy = ref({})
 const speakOpen = ref(false)
 const speakTarget = ref(null)
 const speakText = ref('')
+const speakMode = ref('text') // text | url
+const speakUrl = ref('')
 const speaking = ref(false)
 const speakError = ref('')
 
@@ -126,6 +128,8 @@ async function commitVolume(device) {
 function openSpeak(device) {
   speakTarget.value = device
   speakText.value = ''
+  speakMode.value = 'text'
+  speakUrl.value = ''
   speakError.value = ''
   speakOpen.value = true
 }
@@ -134,19 +138,25 @@ async function submitSpeak() {
   if (speaking.value) return
   speakError.value = ''
 
-  const text = speakText.value.trim()
-  if (!text) {
-    speakError.value = '请输入要播报的文字'
-    return
-  }
-  if (text.length > 500) {
-    speakError.value = '文字内容不能超过 500 字'
+  if (speakMode.value === 'text') {
+    const text = speakText.value.trim()
+    if (!text) {
+      speakError.value = '请输入要播报的文字'
+      return
+    }
+    if (text.length > 500) {
+      speakError.value = '文字内容不能超过 500 字'
+      return
+    }
+  } else if (!speakUrl.value.trim().startsWith('http')) {
+    speakError.value = '请输入以 http(s):// 开头的音频地址'
     return
   }
 
   speaking.value = true
   try {
-    const data = await speakToDevice(speakTarget.value.device_id, text)
+    const extra = speakMode.value === 'url' ? { url: speakUrl.value.trim() } : {}
+    const data = await speakToDevice(speakTarget.value.device_id, speakText.value.trim() || '播放音频', extra)
     if (data?.success === false) {
       speakError.value = data?.message || '播报失败'
       toastError(speakError.value)
@@ -357,6 +367,14 @@ function deviceStateText(device) {
       @close="speakOpen = false"
     >
       <div class="field">
+        <label class="field__label">播放方式</label>
+        <div class="seg" role="tablist">
+          <button type="button" class="seg__item" :class="{ 'seg__item--on': speakMode === 'text' }" :disabled="speaking" @click="speakMode = 'text'">文本播报</button>
+          <button type="button" class="seg__item" :class="{ 'seg__item--on': speakMode === 'url' }" :disabled="speaking" @click="speakMode = 'url'">音频 URL</button>
+        </div>
+      </div>
+
+      <div v-if="speakMode === 'text'" class="field">
         <label class="field__label" for="speak-text">播报内容<span class="req">*</span></label>
         <textarea
           id="speak-text"
@@ -370,6 +388,20 @@ function deviceStateText(device) {
         <div class="field__hint">{{ speakText.length }} / 500 字</div>
       </div>
 
+      <div v-else class="field">
+        <label class="field__label" for="speak-url">音频地址<span class="req">*</span></label>
+        <input
+          id="speak-url"
+          v-model="speakUrl"
+          class="input"
+          type="url"
+          placeholder="https://example.com/audio.mp3"
+          :disabled="speaking"
+          data-autofocus
+        />
+        <div class="field__hint">音箱将直接播放该在线音频（支持 MP3 等）</div>
+      </div>
+
       <div v-if="speakError" class="notice notice--error" role="alert">
         <span class="led led--error" aria-hidden="true"></span>
         <span>{{ speakError }}</span>
@@ -377,7 +409,7 @@ function deviceStateText(device) {
 
       <template #footer>
         <button type="button" class="btn btn--ghost" :disabled="speaking" @click="speakOpen = false">取消</button>
-        <button type="button" class="btn btn--primary" :disabled="speaking || !speakText.trim()" @click="submitSpeak">
+        <button type="button" class="btn btn--primary" :disabled="speaking || (speakMode === 'text' ? !speakText.trim() : !speakUrl.trim())" @click="submitSpeak">
           <span v-if="speaking" class="spinner"></span>
           <span>{{ speaking ? '下发中' : '开始播报' }}</span>
         </button>
