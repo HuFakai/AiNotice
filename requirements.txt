@@ -7,7 +7,7 @@ python-multipart==0.0.6
 
 # HTTP客户端（基础依赖，需要先安装）
 aiohttp==3.9.1
-aiofiles==23.2.0
+aiofiles==23.2.1  # 23.2.0 已被官方 yank
 httpx==0.25.2
 requests==2.31.0
 
@@ -18,7 +18,7 @@ MiService>=2.3.0
 python-jose[cryptography]==3.3.0
 bcrypt>=4.0.1
 cryptography==41.0.7
-email-validator==2.1.0
+email-validator==2.1.1
 
 # 数据库（均保留：aiosqlite=SQLite 默认后端, asyncpg=PostgreSQL, aiomysql+pymysql=MySQL）
 aiosqlite==0.19.0
