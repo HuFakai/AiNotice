@@ -209,7 +209,8 @@ class MiQrLoginService:
         if not session:
             return {"status": "expired", "message": "会话不存在或已过期，请重新获取二维码"}
 
-        if session.status == "confirmed":
+        if session.status in ("confirmed", "consumed"):
+            # consumed = 凭据已被取出并进入绑定流程；视为成功，防止确认响应丢失后 UI 卡在等待
             return {"status": "confirmed", "message": "登录成功"}
 
         if session.status in ("expired", "error"):

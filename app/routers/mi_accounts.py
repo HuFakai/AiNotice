@@ -4,7 +4,7 @@
 """
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Path
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Request
 from fastapi.responses import Response
 from loguru import logger
 
@@ -35,6 +35,16 @@ from app.models.user import User
 
 
 router = APIRouter(prefix="/mi-accounts", tags=["小米账户管理"])
+
+
+def get_client_ip_from_request(request: Request) -> str:
+    """从请求中解析客户端 IP（复用 dependencies 的代理头策略）"""
+    from app.dependencies import get_client_ip as _gcip
+
+    try:
+        return _gcip(request)
+    except Exception:
+        return "unknown"
 
 
 @router.get("", response_model=List[MiAccountResponse], summary="获取小米账户列表", description="获取当前用户的所有小米账户")
@@ -392,6 +402,7 @@ async def get_qr_login_image(
 
 @router.get("/qr/{session_id}/status", response_model=QrStatusResponse, summary="查询扫码状态", description="轮询扫码登录状态，确认后自动创建/更新小米账户")
 async def get_qr_login_status(
+    request: Request,
     db: DatabaseSession,
     session_id: str = Path(..., description="扫码会话ID"),
     current_user: User = Depends(get_current_active_user),
@@ -403,9 +414,17 @@ async def get_qr_login_status(
         payload = await mi_qr_login_service.consume_result(session_id, current_user.id)
         if payload:
             mi_account_service = MiAccountService(db)
-            success, message, account_data = await mi_account_service.create_mi_account_from_token(
-                user_id=current_user.id, **payload
-            )
+            try:
+                success, message, account_data = await mi_account_service.create_mi_account_from_token(
+                    user_id=current_user.id,
+                    mi_user_id=payload.get("mi_user_id") or "",
+                    mi_pass_token=payload.get("mi_pass_token") or "",
+                    display_name=payload.get("display_name"),
+                    client_ip=get_client_ip_from_request(request),
+                )
+            except Exception:
+                logger.exception("扫码登录绑定处理异常")
+                success, message = False, "绑定处理异常，请重新扫码"
             if success:
                 result["account_id"] = account_data["id"]
                 result["mi_username"] = account_data["mi_username"]
