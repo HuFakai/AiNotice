@@ -162,7 +162,10 @@ export async function request(path, options = {}) {
   if (auth && token) headers.Authorization = `Bearer ${token}`
 
   let payload
-  if (body !== undefined && body !== null) {
+  if (body instanceof FormData) {
+    // 浏览器自动生成 multipart boundary，不能手动设置 Content-Type
+    payload = body
+  } else if (body !== undefined && body !== null) {
     headers['Content-Type'] = 'application/json'
     payload = JSON.stringify(body)
   }

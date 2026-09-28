@@ -760,15 +760,15 @@ class NotificationService:
         if not device_ids and not single_device:
             return False, "未指定有效的小爱设备ID，请在渠道配置中选择音箱设备", None
 
-        # 构造 SpeakRequest（device_id 支持单个ID或ID列表，多设备并发播报）
-        speak_req = SpeakRequest(
-            text=content,
-            device_id=(device_ids if device_ids else single_device),
-            volume=extra.get("volume") or config.get("volume"),
-            endvolume=extra.get("endvolume") or config.get("endvolume"),
-            speed=extra.get("speed") or config.get("speed") or 1.0,
-            voice_type=extra.get("voice_type") or config.get("voice_type") or "female",
-        )
+        # 播报模式：text=文本TTS（默认）/ url=在线音频；兼容仅填了 audio_url 的旧配置
+        audio_url = str(config.get("audio_url") or "").strip()
+        mode = config.get("speak_mode") or ("url" if audio_url else "text")
+        volume = extra.get("volume") if extra.get("volume") is not None else config.get("volume")
+        endvolume = extra.get("endvolume") if extra.get("endvolume") is not None else config.get("endvolume")
+        repeat = config.get("repeat") or 1
+        interval = config.get("interval") or 0
+        end_volume_delay = config.get("end_volume_delay")
+        devices = device_ids if device_ids else [single_device]
 
         try:
             # 必须传入真实数据库会话：speak_text 依赖 (user_id, db) 查询该用户的设备列表，
@@ -780,15 +780,46 @@ class NotificationService:
                 if not user_id:
                     return False, "无法确定通知所属用户，语音播报已取消", None
 
-                res = await speak_service.speak_text(
-                    request=speak_req,
-                    user_id=user_id,
-                    db=session,
-                )
+                if mode == "url":
+                    if not audio_url:
+                        return False, "音频播报模式需要在渠道配置中填写在线音频 URL", None
 
-            if res.success:
-                return True, None, {"task_id": res.task_id}
-            return False, res.message, None
+                    # 次数/间隔循环在服务层内完成；音量语义：首播前设开始音量，全部播完后设结束音量
+                    res_msg = await speak_service.notify_play_url(
+                        user_id=user_id,
+                        device_ids=[str(d) for d in devices],
+                        url=audio_url,
+                        volume=volume,
+                        endvolume=endvolume,
+                        repeat=repeat,
+                        interval=interval,
+                        end_volume_delay=end_volume_delay,
+                    )
+                    return True, None, {"message": res_msg}
+
+                # 文本播报：repeat 循环调用（每次生成独立任务记录）
+                repeats = max(1, min(int(repeat or 1), 10))
+                last_error = None
+                for i in range(repeats):
+                    speak_req = SpeakRequest(
+                        text=content,
+                        device_id=(device_ids if device_ids else single_device),
+                        volume=volume if i == 0 else None,          # 仅首播设置开始音量
+                        endvolume=endvolume if i == repeats - 1 else None,  # 仅末次恢复结束音量
+                        end_volume_delay=end_volume_delay,
+                        speed=extra.get("speed") or config.get("speed") or 1.0,
+                        voice_type=extra.get("voice_type") or config.get("voice_type") or "female",
+                    )
+                    res = await speak_service.speak_text(request=speak_req, user_id=user_id, db=session)
+                    if not res.success:
+                        last_error = res.message
+                        break
+                    if i < repeats - 1 and interval:
+                        await asyncio.sleep(max(0.0, float(interval)))
+
+                if last_error:
+                    return False, last_error, None
+                return True, None, None
         except Exception as e:
             logger.error(f"小爱播报服务转发异常: {e}")
             return False, str(e), None

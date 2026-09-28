@@ -16,6 +16,9 @@ class SpeakRequest(BaseModel):
 
     text: Optional[str] = Field(None, min_length=1, max_length=500, description="要播放的文字内容（与 url 二选一）")
     url: Optional[str] = Field(None, max_length=1000, description="在线音频URL（提供时播放该音频而不是TTS）")
+    end_volume_delay: Optional[float] = Field(
+        None, ge=0, le=600, description="结束音量前的等待秒数；不传按文本长度自动估算"
+    )
     device_id: Optional[Union[str, List[str]]] = Field(default=None, description="指定设备ID，支持单个设备ID(字符串)或多个设备ID(数组)，不指定则使用默认设备")
     volume: Optional[int] = Field(default=None, ge=0, le=100, description="播报时音量大小(0-100)，不指定则不调整音量")
     endvolume: Optional[int] = Field(default=None, ge=0, le=100, description="播报完成后恢复的音量(0-100)，不指定则不恢复音量")

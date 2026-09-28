@@ -229,6 +229,7 @@ def create_app() -> FastAPI:
     from app.routers.analytics import router as analytics_router
     from app.routers.notification_channels import router as notification_channels_router
     from app.routers.notifications import router as notifications_router
+    from app.routers.media import router as media_router
 
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(user_router, prefix="/api/v1")
@@ -237,6 +238,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router, prefix="/api/v1")
     app.include_router(notification_channels_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
+    app.include_router(media_router, prefix="/api/v1")
     # speak 路由自身 prefix="/speak"，与其它 router 一致由这里统一加 /api/v1
     app.include_router(speak.router, prefix="/api/v1")
 
@@ -283,6 +285,11 @@ def create_app() -> FastAPI:
     # 任何目录缺失都不能导致应用启动失败。
     frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
     vite_dist = os.path.join(frontend_path, "dist")
+
+    # 上传音频的公开静态访问（音箱拉取播放需匿名；目录不存在则跳过）
+    media_store = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "media")
+    if os.path.isdir(media_store):
+        app.mount("/media", StaticFiles(directory=media_store), name="media-store")
 
     if os.path.isdir(vite_dist):
         assets_dir = os.path.join(vite_dist, "assets")

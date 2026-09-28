@@ -23,6 +23,7 @@ import {
   updateChannel,
 } from '../api/channels.js'
 import { listDevices } from '../api/devices.js'
+import { uploadAudio } from '../api/channels.js'
 import { errorText, formatRelative } from '../lib/format.js'
 import { toastError, toastSuccess } from '../lib/toast.js'
 
@@ -75,6 +76,37 @@ function toggleDevice(fieldKey, id, checked) {
 }
 
 const isEditing = computed(() => editingId.value !== null)
+
+/** 字段是否可见（showIf 条件：speak_mode 等切换字段） */
+function isFieldVisible(field) {
+  if (!field.showIf) return true
+  return String(form.value.config[field.showIf.key] ?? '') === String(field.showIf.equals)
+}
+
+/** 上传音频 */
+const uploadingAudio = ref(false)
+async function onAudioPick(field, event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  uploadingAudio.value = true
+  try {
+    const data = await uploadAudio(file)
+    form.value.config[field.key] = data.url
+    toastSuccess('音频已上传，已填入播放地址')
+  } catch (err) {
+    toastError(errorText(err, '上传失败'))
+  } finally {
+    uploadingAudio.value = false
+    event.target.value = ''
+  }
+}
+
+/** 完整 URL（相对路径补当前站点 origin，供试听） */
+function audioPreviewUrl(value) {
+  const v = String(value || '')
+  if (!v) return ''
+  return v.startsWith('http') ? v : `${window.location.origin}${v}`
+}
 const activeType = computed(() => channelTypeMeta(form.value.channel_type))
 const typeFields = computed(() => activeType.value.fields || [])
 
@@ -198,6 +230,28 @@ async function submit() {
       continue
     }
 
+    if (field.type === 'segment') {
+      config[field.key] = value || field.default || (field.options?.[0]?.value ?? '')
+      continue
+    }
+
+    if (field.type === 'audio') {
+      const v = String(value || '').trim()
+      if (!v) {
+        if (field.required && isFieldVisible(field)) {
+          editorError.value = `请填写${field.label}（可上传或填写公网直链）`
+          return
+        }
+        continue
+      }
+      if (!/^https?:\/\//.test(v)) {
+        editorError.value = `${field.label} 必须以 http(s):// 开头`
+        return
+      }
+      config[field.key] = v
+      continue
+    }
+
     if (field.type === 'devices') {
       const ids = Array.isArray(value) ? value.filter(Boolean).map(String) : []
       if (field.required && !ids.length) {
@@ -263,7 +317,7 @@ async function submit() {
   // 新建模式下必填校验兜底
   if (!isEditing.value) {
     for (const field of typeFields.value) {
-      if (field.required && (config[field.key] === undefined || config[field.key] === '')) {
+      if (field.required && isFieldVisible(field) && (config[field.key] === undefined || config[field.key] === '' || (Array.isArray(config[field.key]) && !config[field.key].length))) {
         editorError.value = `请填写${field.label}`
         return
       }
@@ -532,11 +586,11 @@ function channelTone(channel) {
 
       <template v-else>
         <div class="grid grid--2">
+          <template v-for="field in typeFields" :key="field.key">
           <div
-            v-for="field in typeFields"
-            :key="field.key"
+            v-if="isFieldVisible(field)"
             class="field"
-            :class="{ 'field--wide': field.wide || field.type === 'json' }"
+            :class="{ 'field--wide': field.wide || field.type === 'json' || field.type === 'audio' }"
           >
             <label class="field__label" :for="`ch-${field.key}`">
               {{ field.label }}<span v-if="field.required && !isEditing" class="req">*</span>
@@ -548,6 +602,47 @@ function channelTone(channel) {
               <span class="switch__track"></span>
               <span class="switch__label">{{ form.config[field.key] ? '开启' : '关闭' }}</span>
             </label>
+
+            <!-- 模式切换 -->
+            <div v-else-if="field.type === 'segment'" class="seg" role="tablist">
+              <button
+                v-for="opt in field.options"
+                :key="opt.value"
+                type="button"
+                class="seg__item"
+                :class="{ 'seg__item--on': (form.config[field.key] || field.default) === opt.value }"
+                :disabled="saving"
+                @click="form.config[field.key] = opt.value"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+
+            <!-- 音频 URL + 上传 + 试听 -->
+            <template v-else-if="field.type === 'audio'">
+              <div class="audio-row">
+                <input
+                  :id="`ch-${field.key}`"
+                  v-model="form.config[field.key]"
+                  class="input input--mono"
+                  type="text"
+                  placeholder="https://... 或点击右侧上传"
+                  :disabled="saving || uploadingAudio"
+                />
+                <label class="btn btn--ghost audio-upload">
+                  <span v-if="uploadingAudio" class="spinner"></span>
+                  <span>{{ uploadingAudio ? '上传中' : '上传音频' }}</span>
+                  <input type="file" accept=".mp3,.wav,.ogg,.flac,.m4a,.aac,audio/*" class="visually-hidden" :disabled="saving || uploadingAudio" @change="onAudioPick(field, $event)" />
+                </label>
+              </div>
+              <audio
+                v-if="form.config[field.key]"
+                class="audio-preview"
+                :src="audioPreviewUrl(form.config[field.key])"
+                controls
+                preload="none"
+              ></audio>
+            </template>
 
             <!-- 音箱设备多选 -->
             <div v-else-if="field.type === 'devices'" class="device-pick">
@@ -629,8 +724,9 @@ function channelTone(channel) {
             <div v-if="field.secret && isSecretConfigured(field)" class="field__hint field__hint--ok">
               ✓ 已配置，留空保持不变
             </div>
-            <div v-else-if="field.hint" class="field__hint">{{ field.hint }}</div>
+            <div v-else-if="field.hint || field.desc" class="field__hint">{{ field.hint || field.desc }}</div>
           </div>
+          </template>
         </div>
       </template>
 
@@ -797,5 +893,34 @@ function channelTone(channel) {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-dim);
+}
+</style>
+
+<style scoped>
+.audio-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.audio-upload {
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.audio-preview {
+  width: 100%;
+  height: 36px;
+  margin-top: 8px;
 }
 </style>

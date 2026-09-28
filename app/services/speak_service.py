@@ -348,11 +348,14 @@ class SpeakService:
             # 步骤3: 如果播放成功且指定了恢复音量，等待播放完成后恢复音量
             if volume_restore_needed:
                 try:
-                    # 估算播放时长并等待
-                    # 使用更保守的估算：每分钟120字，加上额外的缓冲时间
-                    estimated_duration2 = max(2.0, len(request.text) / 120 * 60 / (request.speed or 1.0))
+                    # 结束音量前的等待：显式 end_volume_delay 优先，否则按文本长度估算
+                    if getattr(request, "end_volume_delay", None) is not None:
+                        estimated_duration2 = float(request.end_volume_delay)
+                    else:
+                        # 使用更保守的估算：每分钟120字，加上额外的缓冲时间
+                        estimated_duration2 = max(2.0, len(request.text) / 120 * 60 / (request.speed or 1.0))
                     logger.info(f"等待播放完成，预估时长: {estimated_duration2:.1f}秒")
-                    await asyncio.sleep(estimated_duration2 + 2)  # 额外等待2秒确保播放完成
+                    await asyncio.sleep(max(0.0, estimated_duration2))
 
                     # 恢复音量
                     logger.info(f"恢复音量: 设备={device_id}, 音量={request.endvolume}")
@@ -760,6 +763,63 @@ class SpeakService:
             )
 
         return mi_service_wrapper, norm
+
+    async def notify_play_url(
+        self,
+        user_id: int,
+        device_ids: List[str],
+        url: str,
+        volume: Optional[int] = None,
+        endvolume: Optional[int] = None,
+        repeat: int = 1,
+        interval: float = 0,
+        end_volume_delay: Optional[float] = None,
+    ) -> Tuple[bool, str]:
+        """
+        通知渠道的音频 URL 播放：多设备 + 次数/间隔 + 首末音量控制。
+
+        每个设备独立构建专属服务实例（按设备归属账号解析凭据）。
+        """
+        repeat = max(1, min(int(repeat or 1), 10))
+        interval = max(0.0, float(interval or 0))
+        failures = []
+
+        for device_id in device_ids:
+            try:
+                svc = await self._get_user_mi_service(user_id, device_id)
+            except Exception as e:
+                failures.append(f"{device_id}: {str(e)[:60]}")
+                continue
+            try:
+                if volume is not None:
+                    r = await svc.set_volume(device_id, volume)
+                    if not r.get("success"):
+                        logger.warning(f"通知播报：设置开始音量失败 device={device_id}: {r.get('error')}")
+
+                for i in range(repeat):
+                    r = await svc.play_url(device_id, url)
+                    if not r.get("success"):
+                        failures.append(f"{device_id} 第{i + 1}次: {str(r.get('error'))[:60]}")
+                        break
+                    if i < repeat - 1 and interval > 0:
+                        await asyncio.sleep(interval)
+
+                if endvolume is not None:
+                    delay = end_volume_delay if end_volume_delay is not None else 2.0
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    r = await svc.set_volume(device_id, endvolume)
+                    if not r.get("success"):
+                        logger.warning(f"通知播报：恢复结束音量失败 device={device_id}: {r.get('error')}")
+            finally:
+                try:
+                    await svc.close()
+                except Exception:
+                    pass
+
+        if failures:
+            return False, "；".join(failures)
+        return True, f"已在 {len(device_ids)} 台设备上完成音频播放"
 
     def cleanup_old_tasks(self, max_age_hours: int = 24):
         """
