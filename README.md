@@ -41,25 +41,37 @@
 pip install -r requirements.txt
 ```
 
-### 前端构建（管理控制台）
+## 🐳 部署
+
+**推荐使用 Docker 部署**（详细说明见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)）：
+
 ```bash
-cd frontend && npm install && npm run build   # 产物输出 frontend/dist，由后端托管
+cp .env.example .env          # 按需修改；JWT/加密密钥留空则首次启动自动生成
+docker compose up -d --build  # 构建并启动
+curl http://localhost:9000/api/v1/health
 ```
 
-### 启动服务
+数据持久化：`./data`（SQLite）、`./logs`、`./.env` 三个路径挂载到宿主机。
+可选 PostgreSQL：`docker compose --profile postgres up -d --build`。
+
+<details>
+<summary>本地开发环境（非 Docker）</summary>
+
 ```bash
-python3 start.py
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cd frontend && npm install && npm run build && cd ..
+python start.py               # 端口跟随 .env 的 API_PORT
 ```
 
-服务启动后访问：
-- **API文档**: http://localhost:8000/docs
-- **健康检查**: http://localhost:8000/api/v1/health
+前端热更开发：`cd frontend && npm run dev`（已配置 /api 代理）
+</details>
 
 ## 📖 API 使用指南
 
 ### 1. 用户注册
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
+curl -X POST http://localhost:9000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "your_username",
@@ -71,7 +83,7 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
 
 ### 2. 用户登录
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
+curl -X POST http://localhost:9000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "username_or_email": "your_username",
@@ -81,7 +93,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 
 ### 3. 创建API密钥
 ```bash
-curl -X POST http://localhost:8000/api/v1/api-keys \
+curl -X POST http://localhost:9000/api/v1/api-keys \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -98,10 +110,10 @@ curl -X POST http://localhost:8000/api/v1/api-keys \
 ```bash
 # 获取设备列表
 curl -H "Authorization: Bearer xai_sk_your_api_key" \
-  http://localhost:8000/api/v1/devices
+  http://localhost:9000/api/v1/devices
 
 # 语音播放
-curl -X POST http://localhost:8000/api/v1/speak \
+curl -X POST http://localhost:9000/api/v1/speak \
   -H "Authorization: Bearer xai_sk_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{

@@ -1,0 +1,59 @@
+# 爱通知 AiNotice — Docker 部署（推荐方式）
+#
+# 快速开始：
+#   1. cp .env.example .env 并按需修改（JWT/加密密钥留空则首次启动自动生成写回）
+#   2. docker compose up -d --build
+#   3. 访问 http://localhost:${API_PORT:-9000}
+#
+# 数据持久化：SQLite 文件与日志通过 ./data、./logs 挂载到宿主机；
+# .env 以读写方式挂载（首次启动自动生成的密钥需要写回该文件，请勿设为 :ro）。
+
+services:
+  miapi:
+    build:
+      context: .
+      # 国内构建网络受限时打开以下两行注释：
+      # args:
+      #   NPM_REGISTRY: https://registry.npmmirror.com
+      #   PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+    image: ainotice:latest
+    container_name: ainotice
+    ports:
+      - "${API_PORT:-9000}:9000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9000/api/v1/health', timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ===== 可选：PostgreSQL（替代默认 SQLite）=====
+  # 使用方法：
+  #   1. .env 中设置 DB_TYPE=postgresql、DB_HOST=postgres、DB_PASSWORD=...
+  #   2. docker compose --profile postgres up -d
+  postgres:
+    image: postgres:16-alpine
+    container_name: ainotice-postgres
+    profile: postgres
+    environment:
+      POSTGRES_USER: miapi
+      POSTGRES_PASSWORD: miapi_change_me
+      POSTGRES_DB: miapi
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U miapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

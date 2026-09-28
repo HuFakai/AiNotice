@@ -1,0 +1,35 @@
+# 版本控制与工具
+.git
+.gitignore
+.zcodeignore
+.DS_Store
+
+# Python 本地环境
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# 本地运行时数据（容器内使用挂载卷，不打入镜像）
+data/
+logs/
+*.db
+*.sqlite
+token_store/
+*token*.json
+
+# 敏感配置（挂载注入，绝不打入镜像）
+.env
+.env.*
+!.env.example
+
+# 前端本地构建（镜像内使用多阶段构建产物）
+frontend/node_modules/
+frontend/dist/
+
+# 文档与历史产物
+docs/
+*.md
+!README.md
