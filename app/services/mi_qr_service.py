@@ -30,7 +30,7 @@ from app.models.mi_qr_session import MiQrSession
 
 LOGIN_URL = "https://account.xiaomi.com/longPolling/loginUrl"
 SID = "xiaomiio"
-POLL_TIMEOUT_SECONDS = 8           # 单次轮询对小米 lp 的最长等待（须小于常见客户端/代理超时）
+POLL_TIMEOUT_SECONDS = 10          # 单次轮询对小米 lp 的最长等待（与参考实现一致，须小于常见客户端/代理超时）
 STALE_SESSION_GRACE = 120          # 过期会话在库中的保留宽限（秒），便于排查后清理
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -121,6 +121,8 @@ class MiQrLoginService:
             "_locale": "zh_CN",
             "_dc": str(int(time.time() * 1000)),
         }
+        # 参考实现三步骤（loginUrl/二维码图/lp 轮询）共享同一会话：
+        # loginUrl 设置的 Cookie 必须携带到后续 lp 轮询，否则收不到扫码确认事件
         async with httpx.AsyncClient(timeout=15, headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
             resp = await client.get(LOGIN_URL, params=params)
             resp.raise_for_status()
@@ -129,6 +131,7 @@ class MiQrLoginService:
                 import json
 
                 data = json.loads(_strip_prefix(resp.text))
+            cookies = {c.name: c.value for c in client.cookies.jar}
 
         if not data.get("qr") or not data.get("lp"):
             raise ValueError("小米服务未返回二维码信息")
@@ -145,6 +148,7 @@ class MiQrLoginService:
                     lp_url=data["lp"],
                     timeout_seconds=timeout,
                     display_name=display_name,
+                    cookies_json=cookies or None,
                     status="waiting",
                 )
             )
@@ -176,12 +180,20 @@ class MiQrLoginService:
             db.expunge(row)
             return row
 
+    @staticmethod
+    def _client_kwargs(session: MiQrSession) -> dict:
+        """带会话 Cookie 的请求参数（维持与 loginUrl 相同的会话上下文）"""
+        kwargs = {"headers": {"User-Agent": USER_AGENT}}
+        if session.cookies_json:
+            kwargs["cookies"] = dict(session.cookies_json)
+        return kwargs
+
     async def get_qr_image(self, session_id: str, user_id: int) -> Optional[bytes]:
         """下载二维码 PNG（代理小米的图片地址）。"""
         session = await self._get_session(session_id, user_id)
         if not session:
             return None
-        async with httpx.AsyncClient(timeout=15, headers={"User-Agent": USER_AGENT}) as client:
+        async with httpx.AsyncClient(timeout=15, **self._client_kwargs(session)) as client:
             resp = await client.get(session.qr_url)
             resp.raise_for_status()
             return resp.content
@@ -212,16 +224,17 @@ class MiQrLoginService:
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(POLL_TIMEOUT_SECONDS, connect=10),
-                headers={"User-Agent": USER_AGENT},
+                **self._client_kwargs(session),
             ) as client:
                 resp = await client.get(session.lp_url)
         except httpx.TimeoutException:
             return self._public_payload(session, "等待扫码")
         except httpx.HTTPError as e:
-            logger.warning(f"小米扫码轮询请求失败: {e}")
+            logger.warning(f"小米扫码轮询请求失败: {type(e).__name__}: {e}")
             return self._public_payload(session, "网络波动，继续等待")
 
         if resp.status_code != 200:
+            logger.debug(f"小米扫码 lp 未确认: HTTP {resp.status_code}（继续等待）")
             return self._public_payload(session, "等待扫码")
 
         try:
@@ -236,9 +249,9 @@ class MiQrLoginService:
         user_id_mi = data.get("userId")
         pass_token = data.get("passToken")
         if not user_id_mi or not pass_token:
-            await self._mark(session_id, "error")
-            logger.error(f"小米扫码轮询返回缺少凭据字段: {list(data.keys())}")
-            return {"status": "error", "message": "登录数据异常，请重试"}
+            # 可能是中间态响应（已扫码未确认等），记日志继续等待，会话到期自然过期
+            logger.warning(f"小米扫码轮询返回未含凭据字段（继续等待）: {list(data.keys())} body={resp.text[:120]!r}")
+            return self._public_payload(session, "等待扫码")
 
         result = {
             "mi_user_id": str(user_id_mi),

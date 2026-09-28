@@ -33,6 +33,10 @@ class MiQrSession(Base):
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=300, comment="会话有效期（秒）")
     display_name: Mapped[Optional[str]] = mapped_column(String(100), comment="账户备注名")
 
+    # loginUrl 阶段设置的会话 Cookie（参考实现三步骤共享同一 Session，
+    # lp 长轮询必须携带这些 Cookie 才能收到扫码确认事件）
+    cookies_json: Mapped[Optional[Dict[str, str]]] = mapped_column(JSON, comment="loginUrl 会话Cookie")
+
     # 状态机: waiting -> confirmed -> consumed；waiting -> expired/error
     status: Mapped[str] = mapped_column(String(20), default="waiting", comment="状态")
     result_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, comment="扫码成功后的凭据（消费后清除）")
