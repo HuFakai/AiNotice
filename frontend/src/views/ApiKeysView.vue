@@ -12,6 +12,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import CopyButton from '../components/CopyButton.vue'
 import EmptyState from '../components/EmptyState.vue'
 import Modal from '../components/Modal.vue'
+import MultiSelect from '../components/MultiSelect.vue'
 import PageHeader from '../components/PageHeader.vue'
 import {
   PERMISSIONS,
@@ -67,13 +68,14 @@ async function loadChannels() {
   }
 }
 
-function toggleChannel(formRef, id, checked) {
-  const cur = Array.isArray(formRef.channel_ids) ? [...formRef.channel_ids] : []
-  const idx = cur.indexOf(id)
-  if (checked && idx === -1) cur.push(id)
-  if (!checked && idx !== -1) cur.splice(idx, 1)
-  formRef.channel_ids = cur
-}
+const channelOptions = computed(() =>
+  availableChannels.value.map((ch) => ({
+    value: ch.id,
+    label: ch.name,
+    badge: channelTypeMeta(ch.channel_type).label,
+    danger: !ch.is_active,
+  })),
+)
 
 function channelName(id) {
   const ch = availableChannels.value.find((c) => c.id === id)
@@ -422,24 +424,14 @@ async function toggleActive(key) {
         <div class="field__hint" style="margin-bottom:6px">
           可多选。使用该密钥调用 /notify/send 且不指定渠道时，会自动向这里勾选的启用渠道推送
         </div>
-        <div v-if="channelsLoading" class="field__hint">渠道列表加载中…</div>
-        <div v-else-if="!availableChannels.length" class="field__hint">
-          还没有通知渠道：请先到「通知渠道」页创建
-        </div>
-        <div v-else class="channel-pick">
-          <label v-for="ch in availableChannels" :key="ch.id" class="channel-pick__item">
-            <input
-              type="checkbox"
-              class="checkbox"
-              :checked="Array.isArray(createForm.channel_ids) && createForm.channel_ids.includes(ch.id)"
-              :disabled="creating"
-              @change="toggleChannel(createForm, ch.id, $event.target.checked)"
-            />
-            <span class="channel-pick__name">{{ ch.name }}</span>
-            <span class="badge badge--accent">{{ channelTypeMeta(ch.channel_type).label }}</span>
-            <span v-if="!ch.is_active" class="badge badge--warn">已禁用</span>
-          </label>
-        </div>
+        <MultiSelect
+          v-model="createForm.channel_ids"
+          :options="channelOptions"
+          placeholder="点击选择要绑定的通知渠道"
+          empty-text="还没有通知渠道：请先到「通知渠道」页创建"
+          :loading="channelsLoading"
+          :disabled="creating"
+        />
       </div>
 
       <div class="grid grid--2">
@@ -574,24 +566,14 @@ async function toggleActive(key) {
         <div class="field__hint" style="margin-bottom:6px">
           可多选。使用该密钥调用 /notify/send 且不指定渠道时，会自动向这里勾选的启用渠道推送
         </div>
-        <div v-if="channelsLoading" class="field__hint">渠道列表加载中…</div>
-        <div v-else-if="!availableChannels.length" class="field__hint">
-          还没有通知渠道：请先到「通知渠道」页创建
-        </div>
-        <div v-else class="channel-pick">
-          <label v-for="ch in availableChannels" :key="ch.id" class="channel-pick__item">
-            <input
-              type="checkbox"
-              class="checkbox"
-              :checked="Array.isArray(editForm.channel_ids) && editForm.channel_ids.includes(ch.id)"
-              :disabled="editing"
-              @change="toggleChannel(editForm, ch.id, $event.target.checked)"
-            />
-            <span class="channel-pick__name">{{ ch.name }}</span>
-            <span class="badge badge--accent">{{ channelTypeMeta(ch.channel_type).label }}</span>
-            <span v-if="!ch.is_active" class="badge badge--warn">已禁用</span>
-          </label>
-        </div>
+        <MultiSelect
+          v-model="editForm.channel_ids"
+          :options="channelOptions"
+          placeholder="点击选择要绑定的通知渠道"
+          empty-text="还没有通知渠道：请先到「通知渠道」页创建"
+          :loading="channelsLoading"
+          :disabled="editing"
+        />
       </div>
 
       <div class="grid grid--2">
@@ -766,38 +748,6 @@ async function toggleActive(key) {
 </style>
 
 <style scoped>
-/* 绑定通知渠道多选列表 */
-.channel-pick {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.channel-pick__item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.channel-pick__item:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.channel-pick__name {
-  flex: 1;
-  font-size: 13px;
-  color: var(--text);
-}
 
 .keycard__channels {
   display: flex;

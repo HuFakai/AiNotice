@@ -78,6 +78,12 @@ const routes = [
         component: () => import('../views/DocsView.vue'),
         meta: { title: '接口文档', nav: '08' },
       },
+      {
+        path: 'api-test',
+        name: 'api-test',
+        component: () => import('../views/ApiTestView.vue'),
+        meta: { title: '接口测试', nav: '09' },
+      },
     ],
   },
   {

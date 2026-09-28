@@ -9,6 +9,7 @@ import { computed } from 'vue'
 import CopyButton from '../components/CopyButton.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { PERMISSIONS } from '../api/apiKeys.js'
+import { API_ENDPOINTS } from '../api/endpoints.js'
 
 /** 基础地址用当前站点推导，避免硬编码公网域名 */
 const baseUrl = computed(() => {
@@ -16,17 +17,8 @@ const baseUrl = computed(() => {
   return `${window.location.origin}/api/v1`
 })
 
-const endpoints = [
-  { method: 'POST', path: '/speak', desc: '播放文字（支持单设备与多设备数组）', perm: 'speak' },
-  { method: 'GET', path: '/speak/devices', desc: '获取当前账号下的设备列表', perm: 'get_devices' },
-  { method: 'GET', path: '/speak/{device_id}', desc: '获取单个设备详情与状态', perm: 'get_status' },
-  { method: 'POST', path: '/speak/{device_id}', desc: '向指定设备下发播报', perm: 'speak' },
-  { method: 'POST', path: '/speak/{device_id}/volume?volume=0-100', desc: '设置设备音量', perm: 'set_volume' },
-  { method: 'POST', path: '/speak/stop?device_id=', desc: '停止指定设备的播报', perm: 'stop_speak' },
-  { method: 'GET', path: '/speak/status/{task_id}', desc: '查询播报任务状态', perm: 'get_status' },
-  { method: 'POST', path: '/speak/devices/scan', desc: '强制刷新设备缓存', perm: 'manage_devices' },
-  { method: 'POST', path: '/notify/send', desc: '统一推送：显式指定渠道，或不带渠道参数时发到密钥绑定的全部启用渠道', perm: 'send_notify' },
-]
+/* 端点清单与接口测试页共用单一数据源（api/endpoints.js） */
+const endpoints = API_ENDPOINTS
 
 const errorCodes = [
   { code: '200', text: '成功', tone: 'green' },

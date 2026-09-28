@@ -27,6 +27,7 @@ const NAV = [
   { to: '/channels', num: '06', label: '通知渠道', hint: '推送目标' },
   { to: '/profile', num: '07', label: '个人中心', hint: '资料与安全' },
   { to: '/api-docs', num: '08', label: '接口文档', hint: '端点与示例' },
+  { to: '/api-test', num: '09', label: '接口测试', hint: '在线调试平台 API' },
 ]
 
 const currentTitle = computed(() => route.meta?.title || '控制台')
