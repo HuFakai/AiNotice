@@ -7,7 +7,7 @@
 import asyncio
 import time
 import uuid
-from typing import Dict, Optional, List, Tuple, Any
+from typing import Dict, Optional, List, Set, Tuple, Any
 from loguru import logger
 
 from app.schemas.speak import SpeakRequest, SpeakResponse, SpeakStatus, DeviceInfo
@@ -43,6 +43,8 @@ class SpeakService:
         self._task_owner: Dict[str, Optional[int]] = {}
         # 播放队列
         self._play_queue: Dict[str, List[Dict]] = {}
+        # 音频播放自动停止守护任务
+        self._auto_stop_tasks: Set[asyncio.Task] = set()
 
     async def speak_text(
         self,
@@ -776,13 +778,23 @@ class SpeakService:
         end_volume_delay: Optional[float] = None,
     ) -> Tuple[bool, str]:
         """
-        通知渠道的音频 URL 播放：多设备 + 次数/间隔 + 首末音量控制。
+        通知渠道的音频 URL 播放：多设备 + 次数/间隔 + 首末音量控制 + 播完自动停止。
 
-        每个设备独立构建专属服务实例（按设备归属账号解析凭据）。
+        LX05 等设备的 URL 播放会单曲无限循环（设备侧行为，loop 设置无法关闭），
+        因此服务端估算音频时长，播放结束后由守护任务自动下发停止并恢复结束音量。
         """
         repeat = max(1, min(int(repeat or 1), 10))
         interval = max(0.0, float(interval or 0))
         failures = []
+
+        # 估算音频时长（决定自动停止时机；失败则不守护，由用户手动停止）
+        from app.utils.audio_meta import estimate_audio_duration
+
+        duration = await estimate_audio_duration(url)
+        if duration:
+            logger.info(f"通知播报：音频时长约 {duration:.1f} 秒，播完后自动停止")
+        else:
+            logger.warning("通知播报：无法估算音频时长，播完后不会自动停止，请手动停止或更换音频")
 
         for device_id in device_ids:
             try:
@@ -790,28 +802,49 @@ class SpeakService:
             except Exception as e:
                 failures.append(f"{device_id}: {str(e)[:60]}")
                 continue
+
             try:
                 if volume is not None:
                     r = await svc.set_volume(device_id, volume)
                     if not r.get("success"):
                         logger.warning(f"通知播报：设置开始音量失败 device={device_id}: {r.get('error')}")
 
+                played_ok = True
                 for i in range(repeat):
                     r = await svc.play_url(device_id, url)
                     if not r.get("success"):
+                        played_ok = False
                         failures.append(f"{device_id} 第{i + 1}次: {str(r.get('error'))[:60]}")
                         break
                     if i < repeat - 1 and interval > 0:
                         await asyncio.sleep(interval)
 
-                if endvolume is not None:
+                if not played_ok:
+                    continue
+
+                # 播完自动停止 + 恢复结束音量（守护任务持有 svc，结束后释放）
+                if duration:
+                    total = duration * repeat + interval * (repeat - 1)
+                    stop_delay = max(1.0, total + 1.5)
+                    task = asyncio.create_task(
+                        self._auto_stop_device(svc, device_id, stop_delay, endvolume, end_volume_delay)
+                    )
+                    self._auto_stop_tasks.add(task)
+                    task.add_done_callback(self._auto_stop_tasks.discard)
+                elif endvolume is not None:
+                    # 无时长守护时维持旧语义：延迟后设置结束音量
                     delay = end_volume_delay if end_volume_delay is not None else 2.0
                     if delay > 0:
                         await asyncio.sleep(delay)
                     r = await svc.set_volume(device_id, endvolume)
                     if not r.get("success"):
                         logger.warning(f"通知播报：恢复结束音量失败 device={device_id}: {r.get('error')}")
-            finally:
+                    try:
+                        await svc.close()
+                    except Exception:
+                        pass
+            except Exception as e:
+                failures.append(f"{device_id}: {str(e)[:60]}")
                 try:
                     await svc.close()
                 except Exception:
@@ -819,7 +852,47 @@ class SpeakService:
 
         if failures:
             return False, "；".join(failures)
-        return True, f"已在 {len(device_ids)} 台设备上完成音频播放"
+        return True, (
+            f"已在 {len(device_ids)} 台设备上开始播放"
+            + ("，播完后将自动停止" if duration else "（无法估算音频时长，播完后请手动停止）")
+        )
+
+    async def _auto_stop_device(
+        self,
+        svc,
+        device_id: str,
+        stop_delay: float,
+        endvolume: Optional[int],
+        end_volume_delay: Optional[float],
+    ) -> None:
+        """播放结束守护：等待后下发停止并恢复结束音量，最后释放服务实例"""
+        try:
+            await asyncio.sleep(stop_delay)
+            try:
+                mina = await svc._get_mina_service()
+                mid = svc._resolve_mina_device_id(device_id)
+                await mina.player_stop(mid)
+                logger.info(f"通知播报：音频播放结束，已自动停止 device={device_id}")
+            except Exception as e:
+                logger.warning(f"通知播报：自动停止失败 device={device_id}: {e}")
+
+            if endvolume is not None:
+                delay = end_volume_delay if end_volume_delay is not None else 0.0
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                try:
+                    r = await svc.set_volume(device_id, endvolume)
+                    if not r.get("success"):
+                        logger.warning(f"通知播报：恢复结束音量失败 device={device_id}: {r.get('error')}")
+                except Exception as e:
+                    logger.warning(f"通知播报：恢复结束音量异常 device={device_id}: {e}")
+        except asyncio.CancelledError:
+            pass
+        finally:
+            try:
+                await svc.close()
+            except Exception:
+                pass
 
     def cleanup_old_tasks(self, max_age_hours: int = 24):
         """
