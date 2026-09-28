@@ -26,5 +26,9 @@ export async function getLoginHistory(limit = 20, offset = 0) {
 /** 用户统计：设备数、密钥数、调用总数等 */
 export const getUserStats = () => get('/user/stats', null, { silent: true })
 
+export const getLogSettings = () => get('/user/log-settings', null, { silent: true })
+export const updateLogSettings = (payload) => put('/user/log-settings', payload)
+export const runLogCleanup = () => post('/user/log-settings/cleanup')
+
 /** 统一推送（异步受理，success 仅代表已入队） */
 export const sendNotification = (payload) => post('/notify/send', payload)

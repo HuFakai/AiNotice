@@ -21,6 +21,9 @@ import {
   getProfile,
   getUserStats,
   updateProfile,
+  getLogSettings,
+  updateLogSettings,
+  runLogCleanup,
 } from '../api/user.js'
 import {
   activityLabel,
@@ -53,6 +56,73 @@ const displayName = ref('')
 const pwdForm = ref({ old_password: '', new_password: '', confirm: '' })
 const changing = ref(false)
 const pwdError = ref('')
+
+
+/* ---------------- 日志生命周期管理 ---------------- */
+const LOG_TABLES = [
+  { key: 'api_call_logs', label: 'API 调用日志' },
+  { key: 'speak_tasks', label: '播放任务记录' },
+  { key: 'user_activities', label: '用户活动记录' },
+  { key: 'notification_logs', label: '通知日志' },
+]
+const logSettings = ref(null)
+const logDraft = ref({})
+const savingLogs = ref(false)
+const logsError = ref('')
+const cleaningLogs = ref(false)
+const cleanupSummary = ref(null)
+
+async function loadLogSettings() {
+  try {
+    logSettings.value = await getLogSettings()
+    logDraft.value = { ...(logSettings.value?.retentions || {}) }
+  } catch (err) {
+    logsError.value = errorText(err, '加载日志设置失败')
+  }
+}
+
+async function saveLogSettings() {
+  if (savingLogs.value) return
+  logsError.value = ''
+  const payload = {}
+  for (const t of LOG_TABLES) {
+    const v = Number(logDraft.value[t.key])
+    if (!Number.isFinite(v) || v < 1 || v > 3650) {
+      logsError.value = `${t.label} 的保留天数需在 1-3650 之间`
+      return
+    }
+    payload[t.key] = Math.round(v)
+  }
+  savingLogs.value = true
+  try {
+    const data = await updateLogSettings(payload)
+    logSettings.value = { ...(logSettings.value || {}), retentions: data.retentions }
+    logDraft.value = { ...data.retentions }
+    toastSuccess('日志保留天数已更新')
+  } catch (err) {
+    logsError.value = errorText(err, '保存失败')
+  } finally {
+    savingLogs.value = false
+  }
+}
+
+async function runCleanupNow() {
+  if (cleaningLogs.value) return
+  cleaningLogs.value = true
+  cleanupSummary.value = null
+  try {
+    const data = await runLogCleanup()
+    cleanupSummary.value = data?.summary || null
+    toastSuccess(data?.message || '清理完成')
+    await loadLogSettings()
+  } catch (err) {
+    toastError(errorText(err, '清理失败'))
+  } finally {
+    cleaningLogs.value = false
+  }
+}
+
+loadLogSettings()
 
 const pwdStrength = computed(() => passwordStrength(pwdForm.value.new_password))
 const pwdMismatch = computed(
@@ -336,6 +406,59 @@ function activityTone(type) {
               </form>
             </div>
           </section>
+          <section class="card">
+            <div class="card__head">
+              <span class="card__title">
+                <span class="led led--info" aria-hidden="true"></span>
+                日志生命周期管理
+              </span>
+            </div>
+
+            <div class="card__body">
+              <div class="field__hint" style="margin-bottom: 10px">
+                各日志表超过保留天数的数据会在每天 02:00 定时清理，也可点击「立即清理」。当前各表行数实时显示。
+              </div>
+
+              <div class="log-life">
+                <div v-for="t in LOG_TABLES" :key="t.key" class="log-life__row">
+                  <span class="log-life__label">{{ t.label }}</span>
+                  <span class="log-life__count mono-dim">{{ logSettings?.counts?.[t.key] ?? '—' }} 行</span>
+                  <input
+                    v-model="logDraft[t.key]"
+                    class="input input--mono log-life__input"
+                    type="number"
+                    min="1"
+                    max="3650"
+                    :disabled="savingLogs"
+                  />
+                  <span class="log-life__unit">天</span>
+                </div>
+              </div>
+
+              <div v-if="logSettings?.last_cleanup_at" class="field__hint mt-2">
+                最近清理：{{ formatDateTime(logSettings.last_cleanup_at) }}
+              </div>
+              <div v-if="cleanupSummary" class="field__hint">
+                本次清理删除 {{ cleanupSummary.total_records_deleted }} 条记录（{{ cleanupSummary.successful_cleanups }} 张表）
+              </div>
+              <div v-if="logsError" class="notice notice--error mt-2" role="alert">
+                <span class="led led--error" aria-hidden="true"></span>
+                <span>{{ logsError }}</span>
+              </div>
+
+              <div class="row mt-2">
+                <button type="button" class="btn btn--primary" :disabled="savingLogs" @click="saveLogSettings">
+                  <span v-if="savingLogs" class="spinner"></span>
+                  <span>{{ savingLogs ? '保存中' : '保存保留天数' }}</span>
+                </button>
+                <button type="button" class="btn btn--ghost" :disabled="cleaningLogs" @click="runCleanupNow">
+                  <span v-if="cleaningLogs" class="spinner"></span>
+                  <span>{{ cleaningLogs ? '清理中' : '立即清理' }}</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
         </div>
 
         <!-- 右列：活动 / 登录历史 -->
@@ -474,5 +597,51 @@ function activityTone(type) {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 4px;
+}
+</style>
+
+<style scoped>
+/* 日志生命周期管理 */
+.log-life {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.log-life__row {
+  display: grid;
+  grid-template-columns: 110px 1fr 110px 34px;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .log-life__row {
+    grid-template-columns: 1fr 90px 70px 30px;
+  }
+}
+
+.log-life__label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.log-life__count {
+  font-size: 12px;
+  text-align: right;
+}
+
+.log-life__input {
+  height: 32px;
+}
+
+.log-life__unit {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.mono-dim {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
 }
 </style>

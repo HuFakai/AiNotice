@@ -4,8 +4,11 @@
 """
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from loguru import logger
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_active_user, get_client_ip, get_user_agent, DatabaseSession
 from app.services.user_service import UserService
@@ -200,3 +203,99 @@ async def get_login_history(
     except Exception as e:
         logger.error(f"获取用户活动记录API错误: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误")
+
+# ---------------------------------------------------------------------------
+# 日志生命周期管理（个人中心）
+# ---------------------------------------------------------------------------
+
+LOG_RETENTION_TABLES = {
+    "api_call_logs": "API 调用日志",
+    "speak_tasks": "播放任务记录",
+    "user_activities": "用户活动记录",
+    "notification_logs": "通知日志",
+}
+
+
+async def _table_count(db: AsyncSession, table: str) -> int:
+    from sqlalchemy import text as _text
+
+    try:
+        return (await db.execute(_text(f"SELECT COUNT(*) FROM {table}"))).scalar() or 0
+    except Exception:
+        return 0
+
+
+@router.get("/log-settings", summary="获取日志生命周期设置", description="返回各日志表的保留天数（生效值）、当前行数与最近清理时间")
+async def get_log_settings(db: DatabaseSession, current_user: User = Depends(get_current_active_user)):
+    from app.models.system_setting import SystemSetting
+    from app.services.cleanup_service import DatabaseCleanupService
+
+    async with DatabaseCleanupService() as svc:
+        retentions = await svc.resolve_retentions(db)
+
+    counts = {t: await _table_count(db, t) for t in LOG_RETENTION_TABLES}
+    last_row = (await db.execute(
+        select(SystemSetting).where(SystemSetting.setting_key == "last_cleanup_at")
+    )).scalar_one_or_none()
+
+    return {
+        "success": True,
+        "retentions": retentions,
+        "counts": counts,
+        "last_cleanup_at": last_row.setting_value if last_row else None,
+    }
+
+
+@router.put("/log-settings", summary="更新日志保留天数", description="整体更新各日志表的保留天数（1-3650 天），次日定时清理生效，也可立即手动清理")
+async def update_log_settings(
+    request: Request,
+    db: DatabaseSession,
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.models.system_setting import SystemSetting, SettingType
+    from app.services.cleanup_service import DatabaseCleanupService
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="请求体必须是 JSON")
+
+    table_to_key = {t: cfg[0] for t, cfg in DatabaseCleanupService.RETENTION_KEYS.items()}
+    updates = {}
+    for table, key in table_to_key.items():
+        if table not in payload:
+            continue
+        try:
+            days = int(payload[table])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{table} 的保留天数必须是整数")
+        if not 1 <= days <= 3650:
+            raise HTTPException(status_code=400, detail=f"{table} 的保留天数需在 1-3650 之间")
+        updates[key] = days
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="没有需要更新的保留天数")
+
+    for key, days in updates.items():
+        row = (await db.execute(select(SystemSetting).where(SystemSetting.setting_key == key))).scalar_one_or_none()
+        if row:
+            row.setting_value = str(days)
+        else:
+            db.add(SystemSetting(
+                setting_key=key, setting_value=str(days),
+                setting_type=SettingType.INT, description=f"日志保留天数（{key}）", is_public=False,
+            ))
+    await db.commit()
+
+    async with DatabaseCleanupService() as svc:
+        retentions = await svc.resolve_retentions(db)
+    return {"success": True, "message": "日志保留天数已更新", "retentions": retentions}
+
+
+@router.post("/log-settings/cleanup", summary="立即执行日志清理", description="按当前保留天数立即清理各日志表，返回逐表删除统计")
+async def run_log_cleanup(db: DatabaseSession, current_user: User = Depends(get_current_active_user)):
+    from app.services.cleanup_service import DatabaseCleanupService
+
+    async with DatabaseCleanupService() as svc:
+        summary = await svc.cleanup_all_tables()
+    return {"success": True, "message": f"清理完成：共删除 {summary.get('total_records_deleted', 0)} 条记录", "summary": summary}

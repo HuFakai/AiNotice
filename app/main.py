@@ -215,8 +215,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 说明：原 ApiLoggingMiddleware 已删除（include_paths 恒为空从不生效，
-    # 且其内部存在同步 requests.get 外部调用会阻塞事件循环）。
+    # API 调用日志中间件：记录已认证 /api/v1 请求的真实端点/状态/耗时
+    # （异步后台写库，不阻塞请求；替代已被删除的旧死代码中间件）
+    from app.middleware.api_call_log import ApiCallLogMiddleware
+
+    app.add_middleware(ApiCallLogMiddleware)
 
     # 添加路由
     from app.routers.auth import router as auth_router

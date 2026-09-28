@@ -35,6 +35,37 @@ class DatabaseCleanupService:
             'notification_logs': getattr(self.settings, 'notification_logs_retention_days', 30),
         }
     
+    # 保留天数：system_settings 键 -> (配置字段名, 默认值)
+    RETENTION_KEYS = {
+        'api_call_logs': ('api_logs_retention_days', 90),
+        'speak_tasks': ('speak_tasks_retention_days', 7),
+        'user_activities': ('user_activities_retention_days', 30),
+        'notification_logs': ('notification_logs_retention_days', 30),
+    }
+
+    async def resolve_retentions(self, db: AsyncSession) -> Dict[str, int]:
+        """解析生效保留天数：system_settings 覆盖值优先，回退配置默认"""
+        from app.models.system_setting import SystemSetting
+
+        keys = [cfg[0] for cfg in self.RETENTION_KEYS.values()]
+        try:
+            rows = (await db.execute(select(SystemSetting).where(SystemSetting.setting_key.in_(keys)))).scalars().all()
+            overrides = {r.setting_key: r.typed_value for r in rows}
+        except Exception as e:
+            logger.warning(f"读取保留天数覆盖值失败，使用配置默认: {e}")
+            overrides = {}
+
+        resolved = {}
+        for table, (key, default) in self.RETENTION_KEYS.items():
+            v = overrides.get(key)
+            try:
+                resolved[table] = int(v) if v is not None else int(getattr(self.settings, key, default))
+            except (TypeError, ValueError):
+                resolved[table] = default
+            resolved[table] = max(1, min(3650, resolved[table]))
+        self.retention_days = resolved
+        return resolved
+
     async def __aenter__(self):
         """异步上下文管理器入口"""
         self.session = AsyncSessionLocal()
@@ -366,7 +397,13 @@ class DatabaseCleanupService:
         """
         start_time = datetime.now(timezone.utc)
         results = []
-        
+
+        # 生效保留天数：system_settings 覆盖值优先（个人中心可配置）
+        try:
+            await self.resolve_retentions(self.session)
+        except Exception as e:
+            logger.warning(f"解析保留天数失败，使用默认: {e}")
+
         logger.info("开始执行数据库清理任务")
         
         # 清理API调用记录
@@ -412,7 +449,26 @@ class DatabaseCleanupService:
             logger.info(f"数据库清理任务完成：共删除{total_deleted}条记录，耗时{duration:.2f}秒")
         else:
             logger.warning(f"数据库清理任务完成：共删除{total_deleted}条记录，{error_count}个表清理失败，耗时{duration:.2f}秒")
-        
+
+        # 记录最近一次清理时间（个人中心展示）
+        try:
+            from app.models.system_setting import SystemSetting, SettingType
+
+            row = (await self.session.execute(
+                select(SystemSetting).where(SystemSetting.setting_key == "last_cleanup_at")
+            )).scalar_one_or_none()
+            iso = end_time.isoformat()
+            if row:
+                row.setting_value = iso
+            else:
+                self.session.add(SystemSetting(
+                    setting_key="last_cleanup_at", setting_value=iso,
+                    setting_type=SettingType.STRING, description="最近一次日志清理时间", is_public=False,
+                ))
+            await self.session.commit()
+        except Exception as e:
+            logger.warning(f"记录清理时间失败（忽略）: {e}")
+
         return summary
 
 

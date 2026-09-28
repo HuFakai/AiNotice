@@ -49,6 +49,7 @@ async def get_mi_account_service(db: AsyncSession = Depends(get_db)) -> MiAccoun
 
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> User:
@@ -77,6 +78,7 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="认证失败", headers={"WWW-Authenticate": "Bearer"}
         )
 
+    request.state.auth_user_id = user.id
     return user
 
 
@@ -198,6 +200,8 @@ async def get_user_from_jwt_or_api_key(
         try:
             is_valid, user, api_key_obj = await api_key_service.verify_api_key(token)
             if is_valid and user and api_key_obj:
+                request.state.auth_user_id = user.id
+                request.state.auth_api_key_id = api_key_obj.id
                 logger.debug(f"API密钥认证成功: 用户={user.username}")
                 return user
         except Exception as e:
@@ -207,6 +211,7 @@ async def get_user_from_jwt_or_api_key(
     try:
         is_valid, user = await auth_service.verify_token(token)
         if is_valid and user:
+            request.state.auth_user_id = user.id
             logger.debug(f"JWT认证成功: 用户={user.username}")
             return user
     except Exception as e:
@@ -255,6 +260,8 @@ async def get_user_and_api_key_info(
         try:
             is_valid, user, api_key_obj = await api_key_service.verify_api_key(token)
             if is_valid and user and api_key_obj:
+                request.state.auth_user_id = user.id
+                request.state.auth_api_key_id = api_key_obj.id
                 return user, api_key_obj.id
         except Exception as e:
             logger.warning(f"API密钥认证异常: {e}")
@@ -263,6 +270,7 @@ async def get_user_and_api_key_info(
     try:
         is_valid, user = await auth_service.verify_token(token)
         if is_valid and user:
+            request.state.auth_user_id = user.id
             return user, None
     except Exception as e:
         logger.warning(f"JWT认证异常: {e}")
@@ -310,6 +318,8 @@ def require_api_key_permission(permission: str):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail=f"该API密钥未被授予 {permission} 权限"
                 )
+            request.state.auth_user_id = user.id
+            request.state.auth_api_key_id = api_key_obj.id
             return user
 
         is_valid, user = await auth_service.verify_token(token)
@@ -317,6 +327,7 @@ def require_api_key_permission(permission: str):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="认证失败", headers={"WWW-Authenticate": "Bearer"}
             )
+        request.state.auth_user_id = user.id
         return user
 
     return _dependency

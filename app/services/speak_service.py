@@ -12,7 +12,6 @@ from loguru import logger
 
 from app.schemas.speak import SpeakRequest, SpeakResponse, SpeakStatus, DeviceInfo
 from app.models.speak_task import SpeakTask, TaskStatus
-from app.models.api_call_log import ApiCallLog
 from app.utils.mi_service import mi_service_wrapper
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.mi_account_service import MiAccountService
@@ -151,32 +150,9 @@ class SpeakService:
                             except Exception:
                                 pass
                         
-                        # 创建API调用日志
-                        api_log = ApiCallLog(
-                            user_id=user_id,
-                            api_key_id=api_key_id,
-                            endpoint="/api/v1/speak",
-                            method="POST",
-                            request_ip=client_ip,
-                            user_agent=user_agent,
-                            status_code=200,  # 初始状态为成功
-                            response_time_ms=0,  # 将在任务完成时更新
-                            device_id=device_id,
-                            device_name=device_name,
-                            speak_text=request.text,
-                            request_params={
-                                "text": request.text,
-                                "device_id": device_id,
-                                "volume": request.volume,
-                                "endvolume": request.endvolume,
-                                "speed": request.speed
-                            }
-                        )
-                        db.add(api_log)
-                        await db.commit()
+
                         
                         # 将日志ID存储到任务状态中，以便后续更新
-                        self._task_status[task_id].api_log_id = api_log.id
                         
                     except Exception as e:
                         logger.error(f"记录API调用日志失败: {e}")
@@ -403,8 +379,6 @@ class SpeakService:
                     speak_task.complete(actual_duration=actual_duration)  # type: ignore
                     await session.commit()
                 
-                # 更新API调用日志
-                await self._update_api_log(session, task_id, True, actual_duration * 1000)
 
             else:
                 # 播放失败
@@ -417,9 +391,7 @@ class SpeakService:
                 if speak_task is not None:
                     speak_task.fail(error_msg)  # type: ignore
                     await session.commit()
-                
-                # 更新API调用日志
-                await self._update_api_log(session, task_id, False, 0, error_msg)
+
 
         except Exception as e:
             logger.error(f"执行语音播放任务异常: {e}")
@@ -442,46 +414,6 @@ class SpeakService:
                 except Exception as close_err:
                     logger.warning(f"清理专属服务实例 session 失败: {close_err}")
     
-    async def _update_api_log(
-        self, 
-        session: AsyncSession, 
-        task_id: str, 
-        success: bool, 
-        response_time_ms: float, 
-        error_message: Optional[str] = None
-    ):
-        """更新API调用日志"""
-        try:
-            from sqlalchemy import select, update
-            from datetime import datetime
-            
-            # 获取任务状态中的API日志ID
-            if task_id not in self._task_status or not hasattr(self._task_status[task_id], 'api_log_id'):
-                return
-            
-            api_log_id = self._task_status[task_id].api_log_id
-            if not api_log_id:
-                return
-            
-            # 更新API调用日志
-            update_data = {
-                "status_code": 200 if success else 500,
-                "response_time_ms": int(response_time_ms),
-                "task_end_time": datetime.now(),
-            }
-            
-            if error_message:
-                update_data["error_message"] = error_message
-            
-            await session.execute(
-                update(ApiCallLog)
-                .where(ApiCallLog.id == api_log_id)
-                .values(**update_data)
-            )
-            await session.commit()
-            
-        except Exception as e:
-            logger.error(f"更新API调用日志失败: {e}")
 
     async def get_task_status(self, task_id: str, user_id: Optional[int] = None) -> Optional[SpeakStatus]:
         """

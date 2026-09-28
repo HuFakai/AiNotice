@@ -8,7 +8,7 @@
 """
 
 from typing import Optional, Tuple
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,7 @@ REQUIRED_NOTIFY_PERMISSION = "send_notify"
 
 
 async def get_notify_caller(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     auth_service: AuthService = Depends(get_auth_service),
     api_key_service: ApiKeyService = Depends(get_api_key_service),
@@ -75,6 +76,8 @@ async def get_notify_caller(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"API 密钥缺少 {REQUIRED_NOTIFY_PERMISSION} 权限",
                 )
+            request.state.auth_user_id = user.id
+            request.state.auth_api_key_id = api_key_obj.id
             logger.debug(f"统一推送 API Key 认证成功: 用户={user.username}, key_id={api_key_obj.id}")
             return user, api_key_obj
 
@@ -82,6 +85,7 @@ async def get_notify_caller(
     try:
         is_valid, user = await auth_service.verify_token(token)
         if is_valid and user:
+            request.state.auth_user_id = user.id
             logger.debug(f"统一推送 JWT 认证成功: 用户={user.username}")
             return user, None
     except Exception:
