@@ -2,11 +2,13 @@
 #
 # 快速开始：
 #   1. cp .env.example .env 并按需修改（JWT/加密密钥留空则首次启动自动生成写回）
-#   2. docker compose up -d --build
+#   2. docker compose up -d
 #   3. 访问 http://localhost:${API_PORT:-9088}
 #
 # 数据持久化：SQLite 文件与日志通过 ./data、./logs 挂载到宿主机；
 # .env 以读写方式挂载（首次启动自动生成的密钥需要写回该文件，请勿设为 :ro）。
+#
+# 可选 PostgreSQL：见 docker-compose.postgres.yml（老版 compose 不支持 profile 键，故拆分文件）。
 
 services:
   miapi:
@@ -34,27 +36,3 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
-
-  # ===== 可选：PostgreSQL（替代默认 SQLite）=====
-  # 使用方法：
-  #   1. .env 中设置 DB_TYPE=postgresql、DB_HOST=postgres、DB_PASSWORD=...
-  #   2. docker compose --profile postgres up -d
-  postgres:
-    image: postgres:16-alpine
-    container_name: ainotice-postgres
-    profile: postgres
-    environment:
-      POSTGRES_USER: miapi
-      POSTGRES_PASSWORD: miapi_change_me
-      POSTGRES_DB: miapi
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U miapi"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  pgdata:

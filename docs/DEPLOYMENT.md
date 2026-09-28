@@ -60,9 +60,10 @@ curl http://localhost:9088/api/v1/health
    DB_PASSWORD=miapi_change_me
    DB_NAME=miapi
    ```
-2. 启动：
+2. 先启动数据库，再启动应用（老版 compose 不支持 profile，已拆分为独立文件）：
    ```bash
-   docker compose --profile postgres up -d --build
+   docker compose -f docker-compose.postgres.yml up -d
+   docker compose up -d
    ```
 
 ### 常用运维命令

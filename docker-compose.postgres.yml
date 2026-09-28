@@ -1,0 +1,34 @@
+# 可选：PostgreSQL 数据库（替代默认 SQLite）
+#
+# 使用方法：
+#   1. .env 中设置：
+#        DB_TYPE=postgresql
+#        DB_HOST=postgres
+#        DB_PORT=5432
+#        DB_USER=miapi
+#        DB_PASSWORD=miapi_change_me
+#        DB_NAME=miapi
+#   2. 启动（老版 compose 无 profile 键，直接用本文件）：
+#        docker compose -f docker-compose.postgres.yml up -d
+#   3. 应用容器照常：docker compose up -d
+#      （同一项目名下网络互通，应用通过 DB_HOST=postgres 访问数据库）
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ainotice-postgres
+    environment:
+      POSTGRES_USER: miapi
+      POSTGRES_PASSWORD: miapi_change_me
+      POSTGRES_DB: miapi
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U miapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
