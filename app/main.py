@@ -286,10 +286,11 @@ def create_app() -> FastAPI:
     frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
     vite_dist = os.path.join(frontend_path, "dist")
 
-    # 上传音频的公开静态访问（音箱拉取播放需匿名；目录不存在则跳过）
+    # 上传音频的公开静态访问（音箱拉取播放需匿名）。
+    # 必须启动时就建目录并挂载：若目录不存在时跳过，首次上传后 /media 仍会 404
     media_store = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "media")
-    if os.path.isdir(media_store):
-        app.mount("/media", StaticFiles(directory=media_store), name="media-store")
+    os.makedirs(media_store, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=media_store), name="media-store")
 
     if os.path.isdir(vite_dist):
         assets_dir = os.path.join(vite_dist, "assets")
