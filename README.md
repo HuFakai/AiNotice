@@ -54,6 +54,7 @@ curl http://localhost:9088/api/v1/health
 ```
 
 > 每次推送 main 后 GitHub Actions 自动构建并发布镜像到 `ghcr.io/hufakai/ainotice:latest`。
+> 版本更新：`git pull && docker compose pull && docker compose up -d`（详见 [DEPLOYMENT.md 版本更新](docs/DEPLOYMENT.md#版本更新拉取新镜像)）。
 
 数据持久化：`./data`（SQLite）、`./logs`、`./.env` 三个路径挂载到宿主机。
 可选 PostgreSQL：`docker compose --profile postgres up -d --build`。

@@ -72,8 +72,26 @@ curl http://localhost:9088/api/v1/health
 docker compose logs -f miapi      # 跟踪日志
 docker compose restart miapi      # 重启
 docker compose down               # 停止（保留数据卷）
-docker compose up -d --build      # 代码更新后重建
+docker compose up -d --build      # 本地构建方式启动/重建（非标准更新方式，见下节）
 ```
+
+### 版本更新（拉取新镜像）
+
+每次推送 main 后 GitHub Actions 会自动构建新镜像，服务器上按以下三步更新：
+
+```bash
+cd AiNotice                 # 项目所在目录
+git pull                    # 1. 更新源码（compose 配置、文档等）
+docker compose pull         # 2. 拉取最新镜像
+docker compose up -d        # 3. 用新镜像重建容器
+```
+
+> **注意：`git pull` 后直接 `docker compose up -d` 不会生效**——
+> 本地已存在 `ghcr.io/hufakai/ainotice:latest` 时，`up -d` 会沿用旧镜像，
+> 既不拉取也不重新构建，必须先执行 `docker compose pull`。
+> 1panel 等面板的等效操作为「拉取镜像 → 重建容器」。
+> 更新后浏览器强制刷新一次（Ctrl+Shift+R），避免旧前端缓存。
+> `./data`、`./logs` 通过卷挂载，更新容器不会丢失数据。
 
 ### 国内构建网络问题
 
