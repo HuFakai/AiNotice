@@ -540,8 +540,27 @@ class SpeakService:
             if not device_id:
                 return {"success": False, "message": "缺少设备ID或任务ID"}
 
-            # 调用底层停止服务
-            result = await mi_service_wrapper.stop_speak(device_id)
+            # 调用底层停止服务：
+            # 有用户上下文时必须走专属实例（带该用户的账号凭据）——全局单例
+            # wrapper 通常没有认证信息，此前直接用它导致设备级停止一直失败
+            service = mi_service_wrapper
+            own_service = False
+            if user_id:
+                try:
+                    service = await self._get_user_mi_service(user_id, device_id)
+                    own_service = service is not mi_service_wrapper
+                except Exception as auth_err:
+                    logger.error(f"停止播放：构建用户专属服务失败: {auth_err}")
+                    return {"success": False, "message": f"停止播放失败：无法获取小米账号凭据（{str(auth_err)[:80]}）"}
+
+            try:
+                result = await service.stop_speak(device_id)
+            finally:
+                if own_service:
+                    try:
+                        await service.close()
+                    except Exception as close_err:
+                        logger.warning(f"关闭专属服务实例失败: {close_err}")
 
             if result["success"]:
                 logger.info(f"设备 {device_id} 停止播放成功")
