@@ -403,7 +403,13 @@ class MiServiceWrapper:
             return {"success": True, "device_id": device_id, "url": url}
         try:
             mina = await self._get_mina_service()
-            ok = await mina.play_by_url(self._resolve_mina_device_id(device_id), url)
+            # type=1：播放一次自然结束（miservice 的 play_by_url 默认 type=2，
+            # 在 LX05 等设备上会无限循环——与 magicpush/@mi-gpt 的行为对齐）
+            ok = await mina.ubus_request(
+                self._resolve_mina_device_id(device_id),
+                "player_play_url", "mediaplayer",
+                {"url": url, "type": 1, "media": "app_ios"},
+            )
             if ok:
                 logger.info(f"设备 {device_id} 开始播放音频: {url[:60]}")
                 return {"success": True, "device_id": device_id, "url": url, "method": "play_by_url"}
