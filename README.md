@@ -46,6 +46,7 @@ pip install -r requirements.txt
 **推荐使用 Docker 部署**（详细说明见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)）：
 
 ```bash
+git clone https://github.com/HuFakai/AiNotice.git && cd AiNotice
 cp .env.example .env          # 按需修改；JWT/加密密钥留空则首次启动自动生成
 docker compose up -d          # 拉取预构建镜像 ghcr.io/hufakai/ainotice:latest
 curl http://localhost:9088/api/v1/health
@@ -61,6 +62,7 @@ curl http://localhost:9088/api/v1/health
 <summary>本地开发环境（非 Docker）</summary>
 
 ```bash
+git clone https://github.com/HuFakai/AiNotice.git && cd AiNotice
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cd frontend && npm install && npm run build && cd ..

@@ -11,6 +11,10 @@
 ### 快速开始
 
 ```bash
+# 0. 下载代码
+git clone https://github.com/HuFakai/AiNotice.git
+cd AiNotice
+
 # 1. 准备配置
 cp .env.example .env
 # 按需编辑 .env（端口、注册开关、CORS 等）
@@ -102,6 +106,10 @@ location / {
 ## 二、本地开发环境
 
 ```bash
+# 0. 下载代码
+git clone https://github.com/HuFakai/AiNotice.git
+cd AiNotice
+
 # 1. Python 虚拟环境（推荐 Python 3.11）
 python3.11 -m venv .venv
 source .venv/bin/activate
@@ -112,10 +120,10 @@ cd frontend && npm install && npm run build && cd ..
 # 开发热更：cd frontend && npm run dev   （已配置 /api 代理到后端端口）
 
 # 3. 启动后端
-python start.py          # 或 .venv/bin/python -m uvicorn app.main:app --port 9000
+python start.py          # 或 .venv/bin/python -m uvicorn app.main:app --port 9088
 ```
 
-默认 `API_PORT=9000`，访问 `http://localhost:9000`。
+默认 `API_PORT=9088`，访问 `http://localhost:9088`。
 
 ## 三、健康检查与验收
 
