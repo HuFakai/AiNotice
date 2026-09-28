@@ -13,7 +13,9 @@ from loguru import logger
 import asyncio
 from collections import defaultdict
 
-from app.models.api_call_log import ApiCallLog, ApiUsageStats, ApiQuota
+from app.models.api_call_log import ApiCallLog
+from app.database import BJ_TZ
+from app.models.api_call_log import ApiUsageStats, ApiQuota
 from app.models.user import User
 from app.models.api_key import ApiKey
 from app.schemas.analytics import (
@@ -114,10 +116,10 @@ class AnalyticsService:
                 end_time = datetime.strptime(params.end_date, '%Y-%m-%d') + timedelta(days=1)
             else:
                 # 使用预设时间周期，以当前日期的结束时间为结束时间点
-                now = datetime.now()
+                now = datetime.now(BJ_TZ)
                 # 对于按天分组的周期，使用当天的结束时间
                 if params.period in [PeriodType.DAY_7, PeriodType.DAY_30, PeriodType.DAY_90]:
-                    end_time = datetime.combine(now.date(), datetime.max.time())
+                    end_time = datetime.combine(now.date(), datetime.max.time(), tzinfo=BJ_TZ)
                 elif params.period == PeriodType.HOUR_24:
                     # 24小时数据使用当前时间作为结束时间
                     end_time = now
@@ -171,10 +173,10 @@ class AnalyticsService:
                 end_time = datetime.strptime(params.end_date, '%Y-%m-%d') + timedelta(days=1)
             else:
                 # 使用预设时间周期，以当前日期的结束时间为结束时间点
-                now = datetime.now()
+                now = datetime.now(BJ_TZ)
                 # 对于按天分组的周期，使用当天的结束时间
                 if params.period in [PeriodType.DAY_7, PeriodType.DAY_30, PeriodType.DAY_90]:
-                    end_time = datetime.combine(now.date(), datetime.max.time())
+                    end_time = datetime.combine(now.date(), datetime.max.time(), tzinfo=BJ_TZ)
                 elif params.period == PeriodType.HOUR_24:
                     # 24小时数据：使用当前小时的59分59秒作为结束时间，确保包含完整的当前小时数据
                     end_time = now.replace(minute=59, second=59, microsecond=999999)
@@ -257,10 +259,10 @@ class AnalyticsService:
                 end_time = datetime.strptime(params.end_date, '%Y-%m-%d') + timedelta(days=1)
             else:
                 # 使用预设时间周期，以当前日期的结束时间为结束时间点
-                now = datetime.now()
+                now = datetime.now(BJ_TZ)
                 # 对于按天分组的周期，使用当天的结束时间
                 if params.period in [PeriodType.DAY_7, PeriodType.DAY_30, PeriodType.DAY_90]:
-                    end_time = datetime.combine(now.date(), datetime.max.time())
+                    end_time = datetime.combine(now.date(), datetime.max.time(), tzinfo=BJ_TZ)
                 elif params.period == PeriodType.HOUR_24:
                     # 24小时数据：使用当前时间的59分59秒作为结束时间，确保包含最新记录
                     end_time = now.replace(minute=59, second=59, microsecond=999999)
@@ -280,7 +282,7 @@ class AnalyticsService:
             
             # 按端点分组的性能统计
             # percentile_cont 仅 PostgreSQL 支持；SQLite/MySQL 降级占位避免报错
-            from app.database import engine as _engine
+            from app.database import engine as _engine, BJ_TZ
             _use_pct = _engine.dialect.name in ('postgresql', 'postgres')
             if _use_pct:
                 _p50 = func.percentile_cont(0.5).within_group(ApiCallLog.response_time_ms)
@@ -389,10 +391,10 @@ class AnalyticsService:
         """获取实时统计"""
         try:
             # 最近1小时的数据
-            one_hour_ago = datetime.now() - timedelta(hours=1)
+            one_hour_ago = datetime.now(BJ_TZ) - timedelta(hours=1)
             
             # 计算当前QPS（最近5分钟）
-            five_minutes_ago = datetime.now() - timedelta(minutes=5)
+            five_minutes_ago = datetime.now(BJ_TZ) - timedelta(minutes=5)
             qps_stmt = (
                 select(func.count(ApiCallLog.id))
                 .where(
@@ -558,10 +560,10 @@ class AnalyticsService:
                 end_time = datetime.strptime(params.end_date, '%Y-%m-%d') + timedelta(days=1)
             else:
                 # 使用预设时间周期，以当前日期的结束时间为结束时间点
-                now = datetime.now()
+                now = datetime.now(BJ_TZ)
                 # 对于按天分组的周期，使用当天的结束时间
                 if params.period in [PeriodType.DAY_7, PeriodType.DAY_30, PeriodType.DAY_90]:
-                    end_time = datetime.combine(now.date(), datetime.max.time())
+                    end_time = datetime.combine(now.date(), datetime.max.time(), tzinfo=BJ_TZ)
                 else:
                     end_time = now
                 start_time = self._calculate_start_time(end_time, params.period)
@@ -706,10 +708,10 @@ class AnalyticsService:
                 end_time = datetime.strptime(params.end_date, '%Y-%m-%d') + timedelta(days=1)
             else:
                 # 使用预设时间周期，以当前日期的结束时间为结束时间点
-                now = datetime.now()
+                now = datetime.now(BJ_TZ)
                 # 对于按天分组的周期，使用当天的结束时间
                 if params.period in [PeriodType.DAY_7, PeriodType.DAY_30, PeriodType.DAY_90]:
-                    end_time = datetime.combine(now.date(), datetime.max.time())
+                    end_time = datetime.combine(now.date(), datetime.max.time(), tzinfo=BJ_TZ)
                 else:
                     end_time = now
                 start_time = self._calculate_start_time(end_time, params.period)
@@ -778,17 +780,17 @@ class AnalyticsService:
             # 例如：今天是8月13日，那么应该显示8月7日到8月13日
             today = end_time.date()
             start_date = today - timedelta(days=6)
-            return datetime.combine(start_date, datetime.min.time())
+            return datetime.combine(start_date, datetime.min.time(), tzinfo=BJ_TZ)
         elif period == PeriodType.DAY_30:
             # 30天数据：从今天往前推29天
             today = end_time.date()
             start_date = today - timedelta(days=29)
-            return datetime.combine(start_date, datetime.min.time())
+            return datetime.combine(start_date, datetime.min.time(), tzinfo=BJ_TZ)
         elif period == PeriodType.DAY_90:
             # 90天数据：从今天往前推89天
             today = end_time.date()
             start_date = today - timedelta(days=89)
-            return datetime.combine(start_date, datetime.min.time())
+            return datetime.combine(start_date, datetime.min.time(), tzinfo=BJ_TZ)
         else:
             return end_time - timedelta(days=7)
 
@@ -906,94 +908,74 @@ class AnalyticsService:
         start_time: datetime,
         end_time: datetime
     ) -> List[TimeSeriesDataPoint]:
-        """获取时间序列数据"""
+        """获取时间序列数据（北京时间分桶，Python 聚合——库内存 UTC，SQL 日期函数会错日界）"""
         try:
-            # 时间分桶：按数据库方言生成，统一输出 'YYYY-MM-DD HH:00:00' / 'YYYY-MM-DD 00:00:00'
-            from app.database import engine as _engine
-            _dialect = _engine.dialect.name
             _hour = (group_by == GroupByType.HOUR)
-            _fmt = '%Y-%m-%d %H:00:00' if _hour else '%Y-%m-%d 00:00:00'
-            if _dialect == 'sqlite':
-                time_bucket = func.strftime(_fmt, ApiCallLog.created_at)
-            elif _dialect in ('postgresql', 'postgres'):
-                _pgfmt = 'YYYY-MM-DD HH24:00:00' if _hour else 'YYYY-MM-DD 00:00:00'
-                time_bucket = func.to_char(ApiCallLog.created_at, _pgfmt)
-            else:  # mysql 及其它
-                time_bucket = func.date_format(ApiCallLog.created_at, _fmt)
-            
-            # 使用MySQL兼容的时间分组和条件统计
-            stmt = (
-                select(
-                    time_bucket.label('time_bucket'),
-                    func.count(ApiCallLog.id).label('total_calls'),
-                    func.sum(
-                        case((
-                            and_(ApiCallLog.status_code >= 200, ApiCallLog.status_code < 300), 1
-                        ), else_=0)
-                    ).label('success_calls'),
-                    func.sum(
-                        case((ApiCallLog.status_code >= 400, 1), else_=0)
-                    ).label('error_calls'),
-                    func.avg(ApiCallLog.response_time_ms).label('avg_response_time'),
-                    func.sum(ApiCallLog.request_size).label('total_request_size'),
-                    func.sum(ApiCallLog.response_size).label('total_response_size')
-                )
-                .where(and_(*conditions))
-                .group_by('time_bucket')
-                .order_by('time_bucket')
-            )
-            
+
+            # 取范围内的明细（只取需要的列），在 Python 侧按北京时间分桶
+            stmt = select(
+                ApiCallLog.created_at,
+                ApiCallLog.status_code,
+                ApiCallLog.response_time_ms,
+                ApiCallLog.request_size,
+                ApiCallLog.response_size,
+            ).where(and_(*conditions))
             result = await session.execute(stmt)
             rows = result.all()
-            
-            # 将查询结果转换为字典，便于查找
-            data_dict = {}
-            for row in rows:
-                data_dict[row.time_bucket] = {
-                    'total_calls': row.total_calls,
-                    'success_calls': row.success_calls,
-                    'error_calls': row.error_calls,
-                    'avg_response_time': round(float(row.avg_response_time or 0), 2),
-                    'total_request_size': row.total_request_size or 0,
-                    'total_response_size': row.total_response_size or 0
-                }
-            
-            # 生成完整的时间序列，填充空白时间点
+
+            def _bucket_key(dt: datetime) -> str:
+                # created_at 经 BJDateTime 读出即为北京时间 aware
+                if _hour:
+                    return dt.strftime('%Y-%m-%d %H:00:00')
+                return dt.strftime('%Y-%m-%d 00:00:00')
+
+            data_dict: Dict[str, Dict] = {}
+            for created_at, status_code, rt, req_size, resp_size in rows:
+                if created_at is None:
+                    continue
+                key = _bucket_key(created_at)
+                d = data_dict.setdefault(key, {
+                    'total_calls': 0, 'success_calls': 0, 'error_calls': 0,
+                    'rt_sum': 0.0, 'rt_n': 0,
+                    'total_request_size': 0, 'total_response_size': 0,
+                })
+                d['total_calls'] += 1
+                if 200 <= status_code < 300:
+                    d['success_calls'] += 1
+                if status_code >= 400:
+                    d['error_calls'] += 1
+                d['rt_sum'] += float(rt or 0)
+                d['rt_n'] += 1
+                d['total_request_size'] += req_size or 0
+                d['total_response_size'] += resp_size or 0
+
+            # 生成完整时间序列（含空白补零）
             time_series = []
             current_time = start_time
-            
+            step = timedelta(hours=1) if _hour else timedelta(days=1)
             while current_time <= end_time:
-                if group_by == GroupByType.HOUR:
+                if _hour:
                     time_key = current_time.strftime('%Y-%m-%d %H:00:00')
-                    next_time = current_time + timedelta(hours=1)
-                else:  # DAY
+                else:
                     time_key = current_time.strftime('%Y-%m-%d 00:00:00')
-                    next_time = current_time + timedelta(days=1)
-                
-                # 获取该时间点的数据，如果没有则使用默认值
-                data = data_dict.get(time_key, {
-                    'total_calls': 0,
-                    'success_calls': 0,
-                    'error_calls': 0,
-                    'avg_response_time': 0.0,
-                    'total_request_size': 0,
-                    'total_response_size': 0
+                d = data_dict.get(time_key, {
+                    'total_calls': 0, 'success_calls': 0, 'error_calls': 0,
+                    'rt_sum': 0.0, 'rt_n': 0,
+                    'total_request_size': 0, 'total_response_size': 0,
                 })
-                
                 time_series.append(TimeSeriesDataPoint(
                     timestamp=time_key,
-                    calls=data['total_calls'],
-                    success_calls=data['success_calls'],
-                    error_calls=data['error_calls'],
-                    avg_response_time=data['avg_response_time'],
-                    total_request_size=data['total_request_size'],
-                    total_response_size=data['total_response_size']
+                    calls=d['total_calls'],
+                    success_calls=d['success_calls'],
+                    error_calls=d['error_calls'],
+                    avg_response_time=round(d['rt_sum'] / d['rt_n'], 2) if d['rt_n'] else 0.0,
+                    total_request_size=d['total_request_size'],
+                    total_response_size=d['total_response_size'],
                 ))
-                
-                current_time = next_time
-            
+                current_time = current_time + step
+
             return time_series
-            
+
         except Exception as e:
             logger.error(f"获取时间序列数据失败: {e}")
             return []

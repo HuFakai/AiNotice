@@ -155,12 +155,10 @@ const greeting = computed(() => {
           tone="success"
         />
         <StatCard
-          label="成功率"
-          :value="successRate"
-          :digits="1"
-          unit="%"
-          :tone="successRate === null ? '' : successRate >= 99 ? 'success' : successRate >= 95 ? 'warn' : 'error'"
-          hint="2xx 响应占比"
+          label="今日调用"
+          :value="todayCalls"
+          accent
+          hint="最近一个统计窗口"
         />
         <StatCard
           label="活跃密钥"
@@ -169,10 +167,12 @@ const greeting = computed(() => {
           :hint="`共 ${apiKeys.length} 个密钥`"
         />
         <StatCard
-          label="今日调用"
-          :value="todayCalls"
-          accent
-          hint="最近一个统计窗口"
+          label="成功率"
+          :value="successRate"
+          :digits="1"
+          unit="%"
+          :tone="successRate === null ? '' : successRate >= 99 ? 'success' : successRate >= 95 ? 'warn' : 'error'"
+          hint="2xx 响应占比"
         />
       </div>
 
