@@ -6,7 +6,7 @@
 
 ### 前置要求
 - Docker 20+ 与 Docker Compose v2
-- 端口可用（默认 9000，通过 `.env` 的 `API_PORT` 调整宿主机映射）
+- 端口可用（默认 9088，通过 `.env` 的 `API_PORT` 调整宿主机映射）
 
 ### 快速开始
 
@@ -28,7 +28,7 @@ docker compose up -d
 
 # 3. 查看状态与健康检查
 docker compose ps
-curl http://localhost:9000/api/v1/health
+curl http://localhost:9088/api/v1/health
 ```
 
 > 每次推送 main 分支后，GitHub Actions 会自动构建并发布镜像到
@@ -37,7 +37,7 @@ curl http://localhost:9000/api/v1/health
 > 首次拉取若提示 401/403：GHCR 包默认私有，可在 GitHub 仓库
 > Packages 设置中改为 Public，或用 PAT 执行 `docker login ghcr.io`。
 
-访问 `http://localhost:9000` 进入管理控制台（宿主机端口跟随 `.env` 中的 `API_PORT`，容器内固定监听 9000）。
+访问 `http://localhost:9088` 进入管理控制台（宿主机端口跟随 `.env` 中的 `API_PORT`，容器内固定监听 9088）。
 
 ### 数据持久化
 
@@ -90,11 +90,11 @@ docker compose up -d --build      # 代码更新后重建
 
 ### 反向代理（HTTPS）
 
-容器只监听 HTTP 9000，建议前置 Nginx/Caddy 终止 TLS：
+容器只监听 HTTP 9088，建议前置 Nginx/Caddy 终止 TLS：
 
 ```nginx
 location / {
-    proxy_pass http://127.0.0.1:9000;
+    proxy_pass http://127.0.0.1:9088;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
