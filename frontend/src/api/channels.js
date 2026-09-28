@@ -7,7 +7,7 @@
  *   密码类字段一律留空并提示「已配置，留空保持不变」，绝不回填掩码后再提交。
  */
 
-import { del, get, post, put, toList } from './client.js'
+import { del, get, post, put, request, toList } from './client.js'
 
 /** 渠道类型元数据：驱动动态表单与展示 */
 export const CHANNEL_TYPES = [
@@ -106,11 +106,11 @@ export const updateChannel = (id, payload) => put(`/channels/${id}`, payload)
 export const deleteChannel = (id) => del(`/channels/${id}`)
 
 /** 真实发送测试；返回 {success, message, log_id} —— 失败也要展示 message */
-/** 上传音频文件（multipart），返回 {url, filename, size} */
+/** 上传音频文件（multipart），返回 {url, filename, size}；不加 raw，让 client 统一解析 JSON 与报错 */
 export function uploadAudio(file) {
   const fd = new FormData()
   fd.append('file', file)
-  return request('/media/upload', { method: 'POST', body: fd, raw: true })
+  return request('/media/upload', { method: 'POST', body: fd })
 }
 
 export const testChannel = (id) => post(`/channels/${id}/test`, {}, { silent: true })

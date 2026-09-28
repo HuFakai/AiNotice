@@ -91,7 +91,8 @@ async function onAudioPick(field, event) {
   uploadingAudio.value = true
   try {
     const data = await uploadAudio(file)
-    form.value.config[field.key] = data.url
+    // 后端返回相对路径 /media/xxx；音箱经小米云拉取音频，必须存公网绝对地址
+    form.value.config[field.key] = new URL(data.url, window.location.origin).href
     toastSuccess('音频已上传，已填入播放地址')
   } catch (err) {
     toastError(errorText(err, '上传失败'))
