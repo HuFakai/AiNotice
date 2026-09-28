@@ -29,8 +29,9 @@ COPY requirements.txt .
 ARG PIP_INDEX_URL=https://pypi.org/simple
 RUN pip install --index-url ${PIP_INDEX_URL} -r requirements.txt
 
-# 拷贝后端代码
+# 拷贝后端代码（Login/ 是小米账号密码登录模块，简化添加账号功能依赖）
 COPY app/ ./app/
+COPY Login/ ./Login/
 COPY start.py .
 
 # 前端构建产物（FastAPI 托管 + history fallback）

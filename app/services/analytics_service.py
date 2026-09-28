@@ -417,6 +417,7 @@ class AnalyticsService:
             # 最近调用记录
             recent_calls_stmt = (
                 select(ApiCallLog)
+                .options(selectinload(ApiCallLog.api_key))
                 .where(ApiCallLog.user_id == user_id)
                 .order_by(desc(ApiCallLog.created_at))
                 .limit(10)
