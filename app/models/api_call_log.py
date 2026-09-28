@@ -95,6 +95,11 @@ class ApiCallLog(Base):
         """判断是否服务器错误"""
         return self.status_code >= 500
 
+    @property
+    def api_key_name(self) -> Optional[str]:
+        """调用所用密钥名称（查询需 selectinload(ApiCallLog.api_key)）"""
+        return self.api_key.key_name if self.api_key else None
+
     def to_dict(self) -> dict:
         """转换为字典格式"""
         return {

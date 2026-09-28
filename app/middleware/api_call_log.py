@@ -90,10 +90,17 @@ class ApiCallLogMiddleware:
         state = scope.setdefault("state", {})
         start = time.perf_counter()
         status_holder = {"code": 500}
+        body_holder = {"chunks": [], "size": 0}
 
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
                 status_holder["code"] = message["status"]
+            elif message["type"] == "http.response.body":
+                # 失败响应缓冲前 1KB 响应体，用于错误详情展示
+                if status_holder["code"] >= 400 and body_holder["size"] < 1024:
+                    chunk = message.get("body", b"")
+                    body_holder["chunks"].append(chunk)
+                    body_holder["size"] += len(chunk)
             await send(message)
 
         try:
@@ -116,6 +123,13 @@ class ApiCallLogMiddleware:
                     "response_time_ms": duration_ms,
                     "request_params": {"query": query} if query else None,
                 }
+                if status_holder["code"] >= 400:
+                    try:
+                        raw = b"".join(body_holder["chunks"]).decode("utf-8", errors="replace")
+                        if raw:
+                            entry["error_message"] = raw[:500]
+                    except Exception:
+                        pass
                 task = asyncio.create_task(_write_log(entry))
                 _bg_tasks.add(task)
                 task.add_done_callback(_bg_tasks.discard)

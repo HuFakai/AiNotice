@@ -2,17 +2,18 @@
 /**
  * 统计分析 /analytics
  * - 周期切换 24h / 7d / 30d（mono 分段控件）
- * - 概览 + 端点 Top（mono 路径 + 请求占比条）+ 延迟 P50/P95/P99
+ * - 概览 + 配额使用情况 + 调用日志分页表
  * - 配额使用情况
  * - 调用日志分页表
  */
 import { computed, onMounted, ref, watch } from 'vue'
 
 import EmptyState from '../components/EmptyState.vue'
+import Modal from '../components/Modal.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatCard from '../components/StatCard.vue'
-import { PERIODS, getCallLogs, getEndpoints, getOverview, getPerformance, getQuotas } from '../api/analytics.js'
-import { formatBytes, formatDateTime, formatMs, formatNumber, formatPercent, statusCodeTone } from '../lib/format.js'
+import { PERIODS, getCallLogs, getOverview, getQuotas } from '../api/analytics.js'
+import { formatDateTime, formatMs, formatNumber, formatPercent, statusCodeTone } from '../lib/format.js'
 import { toastError } from '../lib/toast.js'
 
 const period = ref('7d')
@@ -20,68 +21,22 @@ const loading = ref(true)
 const loadingLogs = ref(false)
 
 const overview = ref(null)
-const endpoints = ref([])
-const performance = ref([])
 const quotas = ref([])
 const logs = ref({ rows: [], page: 1, pages: 1, total: 0, hasNext: false, hasPrev: false })
 const logPage = ref(1)
 
-/** 端点 Top 条形占比（按最大调用量归一） */
-const endpointRows = computed(() => {
-  const rows = endpoints.value.slice(0, 8)
-  if (!rows.length) return []
-  const max = Math.max(...rows.map((r) => Number(r.totalCalls) || 0), 1)
-  return rows.map((row) => ({
-    ...row,
-    sharePct: Math.max(2, Math.round(((Number(row.totalCalls) || 0) / max) * 100)),
-  }))
-})
-
-/** 延迟分位数：跨端点取加权平均的近似展示 */
-const latency = computed(() => {
-  const rows = performance.value.filter((r) => r.p50 !== null || r.p95 !== null || r.p99 !== null)
-  if (!rows.length) return null
-
-  const weighted = (pick) => {
-    let totalWeight = 0
-    let sum = 0
-    rows.forEach((row) => {
-      const value = pick(row)
-      const weight = Number(row.totalCalls) || 1
-      if (value !== null && value !== undefined) {
-        sum += value * weight
-        totalWeight += weight
-      }
-    })
-    return totalWeight > 0 ? sum / totalWeight : null
-  }
-
-  return {
-    p50: weighted((r) => r.p50),
-    p95: weighted((r) => r.p95),
-    p99: weighted((r) => r.p99),
-    avg: weighted((r) => r.avgResponseTime),
-    rows: rows.length,
-  }
-})
-
-const totalEndpointCalls = computed(() =>
-  endpoints.value.reduce((sum, row) => sum + (Number(row.totalCalls) || 0), 0)
-)
+/* 失败详情弹窗 */
+const detailLog = ref(null)
 
 async function loadAll() {
   loading.value = true
   const results = await Promise.allSettled([
     getOverview(period.value),
-    getEndpoints(period.value),
-    getPerformance(period.value),
     getQuotas(),
   ])
 
-  const [ov, ep, pf, qt] = results
+  const [ov, qt] = results
   if (ov.status === 'fulfilled') overview.value = ov.value
-  if (ep.status === 'fulfilled') endpoints.value = ep.value
-  if (pf.status === 'fulfilled') performance.value = pf.value
   if (qt.status === 'fulfilled') quotas.value = qt.value
 
   if (results.every((r) => r.status === 'rejected')) {
@@ -135,7 +90,7 @@ function quotaTone(usage) {
       nav="05"
       eyebrow="ANALYTICS"
       title="统计分析"
-      desc="调用量、端点分布、响应延迟与配额使用情况。"
+      desc="调用量、成功率与配额使用情况。"
     >
       <template #actions>
         <div class="segment" role="tablist" aria-label="统计周期">
@@ -161,7 +116,7 @@ function quotaTone(usage) {
 
     <div class="stack stagger">
       <!-- 概览 -->
-      <div class="grid grid--4">
+      <div class="grid grid--3">
         <StatCard label="总调用" :value="overview?.totalCalls ?? null" hint="所选周期内" />
         <StatCard
           label="成功率"
@@ -176,94 +131,6 @@ function quotaTone(usage) {
           :digits="0"
           unit="ms"
           hint="全端点均值"
-        />
-        <StatCard label="端点数量" :value="endpoints.length" accent :hint="`共 ${formatNumber(totalEndpointCalls)} 次调用`" />
-      </div>
-
-      <!-- 端点 Top + 延迟 -->
-      <div class="ana-split">
-        <section class="card">
-          <div class="card__head">
-            <span class="card__title">
-              <span class="led led--info" aria-hidden="true"></span>
-              端点调用 Top
-            </span>
-            <span class="tag-mono">BY CALLS</span>
-          </div>
-          <div class="card__body">
-            <div v-if="loading && !endpointRows.length" class="loading-row">
-              <span class="spinner"></span>
-              <span>LOADING</span>
-            </div>
-
-            <div v-else-if="endpointRows.length" class="stack stack--sm">
-              <div v-for="row in endpointRows" :key="row.endpoint" class="bar-row">
-                <div class="bar-row__main">
-                  <div class="bar-row__path truncate" :title="row.endpoint">{{ row.endpoint }}</div>
-                  <div class="bar-row__track">
-                    <div class="bar-row__fill" :style="{ width: `${row.sharePct}%` }"></div>
-                  </div>
-                </div>
-                <div class="bar-row__num">
-                  {{ formatNumber(row.totalCalls) }}
-                  <div v-if="row.successRate !== null" class="bar-row__rate" :class="row.successRate >= 99 ? 'text-green' : row.successRate >= 95 ? 'text-warn' : 'text-red'">
-                    {{ formatPercent(row.successRate, 1) }}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <EmptyState v-else icon="∅" title="暂无端点统计" desc="所选周期内没有调用记录。" />
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card__head">
-            <span class="card__title">
-              <span class="led led--success" aria-hidden="true"></span>
-              响应延迟分位
-            </span>
-            <span class="tag-mono">LATENCY</span>
-          </div>
-          <div class="card__body">
-            <template v-if="latency">
-              <div class="lat">
-                <div class="lat__item">
-                  <div class="lat__key tag-mono">P50</div>
-                  <div class="lat__val num">{{ formatMs(latency.p50) }}</div>
-                </div>
-                <div class="lat__item">
-                  <div class="lat__key tag-mono">P95</div>
-                  <div class="lat__val num lat__val--warn">{{ formatMs(latency.p95) }}</div>
-                </div>
-                <div class="lat__item">
-                  <div class="lat__key tag-mono">P99</div>
-                  <div class="lat__val num lat__val--red">{{ formatMs(latency.p99) }}</div>
-                </div>
-                <div class="lat__item">
-                  <div class="lat__key tag-mono">AVG</div>
-                  <div class="lat__val num">{{ formatMs(latency.avg) }}</div>
-                </div>
-              </div>
-              <div class="field__hint mt-2">基于 {{ latency.rows }} 个端点按调用量加权</div>
-            </template>
-
-            <EmptyState v-else icon="∅" title="暂无性能数据" desc="需要至少一次成功的接口调用。" />
-          </div>
-        </section>
-      </div>
-
-      <!-- 传输量 -->
-      <div v-if="overview" class="grid grid--2">
-        <StatCard
-          label="请求流量"
-          :value="formatBytes(overview.totalRequestSize)"
-          hint="所选周期入站字节"
-        />
-        <StatCard
-          label="响应流量"
-          :value="formatBytes(overview.totalResponseSize)"
-          hint="所选周期出站字节"
         />
       </div>
 
@@ -336,6 +203,7 @@ function quotaTone(usage) {
                 <th>延迟</th>
                 <th>密钥</th>
                 <th>来源 IP</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -355,6 +223,16 @@ function quotaTone(usage) {
                 <td class="td-mono">{{ log.responseTime === null ? '—' : formatMs(log.responseTime) }}</td>
                 <td class="td-dim truncate" style="max-width: 120px">{{ log.apiKeyName || '—' }}</td>
                 <td class="td-mono td-dim">{{ log.requestIp || '—' }}</td>
+                <td>
+                  <button
+                    v-if="log.errorMessage || (log.statusCode >= 400)"
+                    type="button"
+                    class="btn btn--ghost btn--sm"
+                    @click="detailLog = log"
+                  >
+                    详情
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -373,6 +251,31 @@ function quotaTone(usage) {
           </div>
         </div>
       </section>
+
+      <!-- 失败详情 -->
+      <Modal :open="!!detailLog" title="调用详情" :sub="detailLog?.endpoint" size="md" @close="detailLog = null">
+        <div class="dl">
+          <div class="dl__item"><div class="dl__key">时间</div><div class="dl__val td-dim">{{ formatDateTime(detailLog?.createdAt) }}</div></div>
+          <div class="dl__item"><div class="dl__key">请求</div><div class="dl__val td-mono">{{ detailLog?.method }} {{ detailLog?.endpoint }}</div></div>
+          <div class="dl__item"><div class="dl__key">状态</div><div class="dl__val"><span class="badge" :class="`badge--${statusCodeTone(detailLog?.statusCode)}`">{{ detailLog?.statusCode ?? '—' }}</span></div></div>
+          <div class="dl__item"><div class="dl__key">延迟</div><div class="dl__val td-mono">{{ detailLog?.responseTime === null ? '—' : formatMs(detailLog.responseTime) }}</div></div>
+          <div class="dl__item"><div class="dl__key">密钥</div><div class="dl__val td-dim">{{ detailLog?.apiKeyName || '—' }}</div></div>
+          <div class="dl__item"><div class="dl__key">来源 IP</div><div class="dl__val td-mono">{{ detailLog?.requestIp || '—' }}</div></div>
+        </div>
+
+        <div v-if="detailLog?.errorMessage" class="field mt-2">
+          <span class="field__label">失败详情</span>
+          <pre class="err-pre">{{ detailLog.errorMessage }}</pre>
+        </div>
+        <div v-if="detailLog?.requestParams?.query" class="field">
+          <span class="field__label">查询参数</span>
+          <pre class="err-pre">{{ detailLog.requestParams.query }}</pre>
+        </div>
+
+        <template #footer>
+          <button type="button" class="btn btn--ghost" @click="detailLog = null">关闭</button>
+        </template>
+      </Modal>
     </div>
   </div>
 </template>
@@ -472,5 +375,23 @@ function quotaTone(usage) {
   align-items: center;
   gap: 9px;
   margin-top: 6px;
+}
+</style>
+
+<style scoped>
+.err-pre {
+  margin: 0;
+  padding: 10px;
+  max-height: 200px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>
