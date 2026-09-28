@@ -21,6 +21,7 @@ import {
   listApiKeys,
   updateApiKey,
 } from '../api/apiKeys.js'
+import { listChannels, channelTypeMeta } from '../api/channels.js'
 import { errorText, formatDateTime, formatExpiry } from '../lib/format.js'
 import { toastError, toastSuccess } from '../lib/toast.js'
 
@@ -36,6 +37,7 @@ const createForm = ref({
   permissions: defaultPermissions(),
   expires_in_days: '',
   usage_limit: '',
+  channel_ids: [],
 })
 
 /* ---------------- 一次性密钥 ---------------- */
@@ -48,7 +50,45 @@ const editOpen = ref(false)
 const editing = ref(false)
 const editError = ref('')
 const editTarget = ref(null)
-const editForm = ref({ key_name: '', permissions: defaultPermissions(), is_active: true, usage_limit: '' })
+const editForm = ref({ key_name: '', permissions: defaultPermissions(), is_active: true, usage_limit: '', channel_ids: [] })
+
+/* ---------------- 通知渠道绑定 ---------------- */
+const availableChannels = ref([])
+const channelsLoading = ref(false)
+
+async function loadChannels() {
+  channelsLoading.value = true
+  try {
+    availableChannels.value = await listChannels()
+  } catch {
+    availableChannels.value = []
+  } finally {
+    channelsLoading.value = false
+  }
+}
+
+function toggleChannel(formRef, id, checked) {
+  const cur = Array.isArray(formRef.channel_ids) ? [...formRef.channel_ids] : []
+  const idx = cur.indexOf(id)
+  if (checked && idx === -1) cur.push(id)
+  if (!checked && idx !== -1) cur.splice(idx, 1)
+  formRef.channel_ids = cur
+}
+
+function channelName(id) {
+  const ch = availableChannels.value.find((c) => c.id === id)
+  return ch ? ch.name : `渠道 #${id}`
+}
+
+function boundChannels(key) {
+  const ids = Array.isArray(key?.channel_ids) ? key.channel_ids : []
+  return ids
+    .map((id) => {
+      const ch = availableChannels.value.find((c) => c.id === id)
+      return ch ? { id, name: ch.name, type: ch.channel_type } : { id, name: `渠道 #${id}`, type: '' }
+    })
+    .filter((x) => x)
+}
 
 /* ---------------- 删除 ---------------- */
 const deleteTarget = ref(null)
@@ -66,7 +106,10 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadChannels()
+})
 
 /* ---------------- 状态文案 ---------------- */
 
@@ -92,6 +135,7 @@ function openCreate() {
     permissions: defaultPermissions(),
     expires_in_days: '',
     usage_limit: '',
+    channel_ids: [],
   }
   createError.value = ''
   createOpen.value = true
@@ -108,6 +152,9 @@ async function submitCreate() {
   }
 
   const payload = { key_name: name, permissions: { ...createForm.value.permissions } }
+  if (Array.isArray(createForm.value.channel_ids)) {
+    payload.channel_ids = createForm.value.channel_ids.filter(Boolean)
+  }
 
   const days = Number(createForm.value.expires_in_days)
   if (createForm.value.expires_in_days !== '' && Number.isFinite(days) && days > 0) {
@@ -159,6 +206,7 @@ function openEdit(key) {
     permissions: { ...defaultPermissions(), ...(key?.permissions || {}) },
     is_active: Boolean(key?.is_active),
     usage_limit: key?.usage_limit ?? '',
+    channel_ids: Array.isArray(key?.channel_ids) ? [...key.channel_ids] : [],
   }
   editError.value = ''
   editOpen.value = true
@@ -178,6 +226,7 @@ async function submitEdit() {
     key_name: name,
     permissions: { ...editForm.value.permissions },
     is_active: editForm.value.is_active,
+    channel_ids: Array.isArray(editForm.value.channel_ids) ? editForm.value.channel_ids.filter(Boolean) : [],
   }
 
   const limit = Number(editForm.value.usage_limit)
@@ -315,6 +364,13 @@ async function toggleActive(key) {
                 {{ perm.label }}
               </span>
             </div>
+
+            <div v-if="boundChannels(key).length" class="keycard__channels">
+              <span class="keycard__channels-label">推送渠道</span>
+              <span v-for="ch in boundChannels(key)" :key="ch.id" class="badge badge--info" :title="`渠道 #${ch.id}`">
+                {{ ch.name }}
+              </span>
+            </div>
           </div>
 
           <div class="card__foot keycard__foot">
@@ -357,6 +413,31 @@ async function toggleActive(key) {
               <input v-model="createForm.permissions[perm.key]" type="checkbox" :disabled="creating" />
               <span class="switch__track"></span>
             </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field__label">绑定通知渠道</span>
+        <div class="field__hint" style="margin-bottom:6px">
+          可多选。使用该密钥调用 /notify/send 且不指定渠道时，会自动向这里勾选的启用渠道推送
+        </div>
+        <div v-if="channelsLoading" class="field__hint">渠道列表加载中…</div>
+        <div v-else-if="!availableChannels.length" class="field__hint">
+          还没有通知渠道：请先到「通知渠道」页创建
+        </div>
+        <div v-else class="channel-pick">
+          <label v-for="ch in availableChannels" :key="ch.id" class="channel-pick__item">
+            <input
+              type="checkbox"
+              class="checkbox"
+              :checked="Array.isArray(createForm.channel_ids) && createForm.channel_ids.includes(ch.id)"
+              :disabled="creating"
+              @change="toggleChannel(createForm, ch.id, $event.target.checked)"
+            />
+            <span class="channel-pick__name">{{ ch.name }}</span>
+            <span class="badge badge--accent">{{ channelTypeMeta(ch.channel_type).label }}</span>
+            <span v-if="!ch.is_active" class="badge badge--warn">已禁用</span>
           </label>
         </div>
       </div>
@@ -484,6 +565,31 @@ async function toggleActive(key) {
               <input v-model="editForm.permissions[perm.key]" type="checkbox" :disabled="editing" />
               <span class="switch__track"></span>
             </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field__label">绑定通知渠道</span>
+        <div class="field__hint" style="margin-bottom:6px">
+          可多选。使用该密钥调用 /notify/send 且不指定渠道时，会自动向这里勾选的启用渠道推送
+        </div>
+        <div v-if="channelsLoading" class="field__hint">渠道列表加载中…</div>
+        <div v-else-if="!availableChannels.length" class="field__hint">
+          还没有通知渠道：请先到「通知渠道」页创建
+        </div>
+        <div v-else class="channel-pick">
+          <label v-for="ch in availableChannels" :key="ch.id" class="channel-pick__item">
+            <input
+              type="checkbox"
+              class="checkbox"
+              :checked="Array.isArray(editForm.channel_ids) && editForm.channel_ids.includes(ch.id)"
+              :disabled="editing"
+              @change="toggleChannel(editForm, ch.id, $event.target.checked)"
+            />
+            <span class="channel-pick__name">{{ ch.name }}</span>
+            <span class="badge badge--accent">{{ channelTypeMeta(ch.channel_type).label }}</span>
+            <span v-if="!ch.is_active" class="badge badge--warn">已禁用</span>
           </label>
         </div>
       </div>
@@ -656,5 +762,56 @@ async function toggleActive(key) {
   height: 15px;
   accent-color: var(--accent);
   flex: none;
+}
+</style>
+
+<style scoped>
+/* 绑定通知渠道多选列表 */
+.channel-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.channel-pick__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.channel-pick__item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.channel-pick__name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.keycard__channels {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.keycard__channels-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
 }
 </style>

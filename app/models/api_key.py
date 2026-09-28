@@ -4,7 +4,7 @@ API密钥数据模型
 """
 
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -40,6 +40,9 @@ class ApiKey(Base):
     # 状态和权限
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否激活")
     permissions: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, comment="权限配置")
+    # 绑定的通知渠道ID列表：用该密钥调 /notify/send 且未显式指定渠道时，
+    # 自动向这里列出的启用渠道推送
+    channel_ids: Mapped[Optional[List[int]]] = mapped_column(JSON, comment="绑定的通知渠道ID列表")
 
     # 使用统计
     usage_count: Mapped[int] = mapped_column(Integer, default=0, comment="使用次数")

@@ -205,6 +205,7 @@ class NotificationService:
         user_id: int,
         req: NotificationSendRequest,
         wait: bool = False,
+        bound_channel_ids: Optional[List[int]] = None,
     ) -> NotificationSendResponse:
         """
         统一发送通知主接口。
@@ -212,7 +213,19 @@ class NotificationService:
         Args:
             wait: False（默认）异步调度，立即返回并携带 log_id；
                   True 同步执行真实发送，返回真实成败结果（测试通道场景使用）。
+            bound_channel_ids: API Key 绑定的通知渠道ID列表。请求未显式指定
+                  channel_id/channel_type 时，向这些启用渠道逐个推送（多渠道）。
         """
+        # 0. API Key 免传参模式：向绑定的全部启用渠道推送
+        #    bound_channel_ids is None → JWT 调用（保持显式要求）；[] → 密钥未绑定任何渠道
+        if not req.channel_id and not req.channel_type and bound_channel_ids is not None:
+            if not bound_channel_ids:
+                return NotificationSendResponse(
+                    success=False,
+                    message="该 API 密钥尚未绑定通知渠道：请到「API 密钥」页为密钥绑定渠道，或显式指定 channel_id",
+                )
+            return await self._send_to_bound_channels(db, user_id, req, bound_channel_ids, wait=wait)
+
         channel_name = "临时发送"
         channel_type = req.channel_type
         channel_id = req.channel_id
@@ -295,6 +308,84 @@ class NotificationService:
             message=f"已成功调度发送任务到通道: {channel_name} ({channel_type})",
             log_id=log_id,
         )
+
+    async def _send_to_bound_channels(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        req: NotificationSendRequest,
+        bound_channel_ids: List[int],
+        wait: bool = False,
+    ) -> NotificationSendResponse:
+        """API Key 免传参模式：向密钥绑定的全部启用渠道逐个推送（每个渠道一条日志）。"""
+        from sqlalchemy import select
+
+        from app.models.notification_channel import NotificationChannel
+
+        try:
+            stmt = select(NotificationChannel).where(
+                NotificationChannel.user_id == user_id,
+                NotificationChannel.is_active == True,  # noqa: E712
+                NotificationChannel.id.in_(list(set(bound_channel_ids))),
+            )
+            result = await db.execute(stmt)
+            channels = result.scalars().all()
+        except Exception as e:
+            logger.error(f"解析密钥绑定渠道失败: {e}")
+            return NotificationSendResponse(success=False, message="解析绑定渠道失败")
+
+        if not channels:
+            return NotificationSendResponse(
+                success=False,
+                message="密钥未绑定任何可用的通知渠道（或绑定的渠道均已被禁用/删除）",
+            )
+
+        # 保持绑定顺序发送
+        order = {cid: i for i, cid in enumerate(bound_channel_ids)}
+        channels = sorted(channels, key=lambda c: order.get(c.id, 999))
+
+        results: List[Dict[str, Any]] = []
+        scheduled = 0
+        for channel in channels:
+            item: Dict[str, Any] = {
+                "channel_id": channel.id,
+                "channel_name": channel.name,
+                "channel_type": channel.channel_type,
+                "success": False,
+                "log_id": None,
+                "message": "",
+            }
+            try:
+                config = self.decrypt_channel_config(channel)
+            except ValueError as e:
+                item["message"] = str(e)
+                results.append(item)
+                continue
+
+            # 构造单渠道请求（显式 channel_id 语义；recipient/extra 透传）
+            single_req = NotificationSendRequest(
+                channel_id=channel.id,
+                title=req.title,
+                content=req.content,
+                recipient=req.recipient,
+                extra=req.extra,
+            )
+            resp = await self.send_notification(db, user_id, single_req, wait=wait)
+            item["success"] = resp.success
+            item["log_id"] = resp.log_id
+            item["message"] = resp.message
+            if resp.success:
+                scheduled += 1
+            results.append(item)
+
+        success = scheduled > 0
+        resp = NotificationSendResponse(
+            success=success,
+            message=f"已向 {scheduled}/{len(results)} 个绑定渠道调度发送",
+        )
+        resp.results = results
+        resp.log_id = next((r["log_id"] for r in results if r["log_id"]), None)
+        return resp
 
     async def _dispatch_send(
         self,
@@ -661,14 +752,18 @@ class NotificationService:
         from app.services.speak_service import speak_service
         from app.schemas.speak import SpeakRequest
 
-        device_id = recipient or config.get("device_id")
-        if not device_id:
-            return False, "未指定有效的小爱设备ID", None
+        # 多设备优先（config.device_ids 列表），兼容旧单值 device_id；recipient 仍可覆盖
+        device_ids: Optional[List[str]] = None
+        if isinstance(config.get("device_ids"), list) and config["device_ids"]:
+            device_ids = [str(d) for d in config["device_ids"] if d]
+        single_device = recipient or config.get("device_id")
+        if not device_ids and not single_device:
+            return False, "未指定有效的小爱设备ID，请在渠道配置中选择音箱设备", None
 
-        # 构造 SpeakRequest
+        # 构造 SpeakRequest（device_id 支持单个ID或ID列表，多设备并发播报）
         speak_req = SpeakRequest(
             text=content,
-            device_id=device_id,
+            device_id=(device_ids if device_ids else single_device),
             volume=extra.get("volume") or config.get("volume"),
             endvolume=extra.get("endvolume") or config.get("endvolume"),
             speed=extra.get("speed") or config.get("speed") or 1.0,

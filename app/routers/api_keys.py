@@ -42,6 +42,7 @@ async def get_api_keys(
                 is_usage_exceeded=ak.is_usage_exceeded,
                 is_valid=ak.is_valid,
                 permissions=ak.permissions,
+                channel_ids=ak.channel_ids,
                 usage_count=ak.usage_count,
                 usage_limit=ak.usage_limit,
                 last_used_at=ak.last_used_at,
@@ -73,6 +74,7 @@ async def create_api_key(
             permissions=request.permissions,
             expires_in_days=request.expires_in_days,
             usage_limit=request.usage_limit,
+            channel_ids=request.channel_ids,
             client_ip=client_ip,
             user_agent=user_agent,
         )
@@ -115,6 +117,7 @@ async def update_api_key(
             permissions=request.permissions,
             is_active=request.is_active,
             usage_limit=request.usage_limit,
+            channel_ids=request.channel_ids,
             client_ip=client_ip,
             user_agent=user_agent,
         )

@@ -22,6 +22,7 @@ import {
   testChannel,
   updateChannel,
 } from '../api/channels.js'
+import { listDevices } from '../api/devices.js'
 import { errorText, formatRelative } from '../lib/format.js'
 import { toastError, toastSuccess } from '../lib/toast.js'
 
@@ -44,6 +45,35 @@ const deleteTarget = ref(null)
 const testingId = ref(null)
 const testResults = ref({})
 
+/* 音箱设备（speak 渠道多选用） */
+const speakerDevices = ref([])
+const devicesLoading = ref(false)
+
+async function loadDevices() {
+  devicesLoading.value = true
+  try {
+    const all = await listDevices()
+    speakerDevices.value = all.filter((d) => /speaker/i.test(d.model || '') || /音箱|小爱/i.test(d.name || ''))
+  } catch {
+    speakerDevices.value = [] // 拉取失败时允许手动保存旧配置，不阻塞表单
+  } finally {
+    devicesLoading.value = false
+  }
+}
+
+function deviceName(id) {
+  const d = speakerDevices.value.find((x) => x.device_id === String(id))
+  return d ? d.name : `设备 ${id}`
+}
+
+function toggleDevice(fieldKey, id, checked) {
+  const cur = Array.isArray(form.value.config[fieldKey]) ? [...form.value.config[fieldKey]] : []
+  const idx = cur.indexOf(id)
+  if (checked && idx === -1) cur.push(id)
+  if (!checked && idx !== -1) cur.splice(idx, 1)
+  form.value.config[fieldKey] = cur
+}
+
 const isEditing = computed(() => editingId.value !== null)
 const activeType = computed(() => channelTypeMeta(form.value.channel_type))
 const typeFields = computed(() => activeType.value.fields || [])
@@ -63,7 +93,10 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadDevices()
+})
 
 /* ---------------- 表单构造 ---------------- */
 
@@ -162,6 +195,16 @@ async function submit() {
 
     if (field.type === 'boolean') {
       config[field.key] = Boolean(value)
+      continue
+    }
+
+    if (field.type === 'devices') {
+      const ids = Array.isArray(value) ? value.filter(Boolean).map(String) : []
+      if (field.required && !ids.length) {
+        editorError.value = `请选择${field.label}`
+        return
+      }
+      if (ids.length) config[field.key] = ids
       continue
     }
 
@@ -317,6 +360,12 @@ function configSummary(channel) {
     if (field.type === 'json') {
       const count = typeof value === 'object' ? Object.keys(value).length : 0
       parts.push(`${field.label}：${count} 项`)
+      return
+    }
+    if (field.type === 'devices') {
+      const ids = Array.isArray(value) ? value : []
+      const names = ids.map((id) => deviceName(id)).join('、')
+      parts.push(`${field.label}：${names || `${ids.length} 台`}`)
       return
     }
     parts.push(`${field.label}：${String(value)}`)
@@ -499,6 +548,28 @@ function channelTone(channel) {
               <span class="switch__track"></span>
               <span class="switch__label">{{ form.config[field.key] ? '开启' : '关闭' }}</span>
             </label>
+
+            <!-- 音箱设备多选 -->
+            <div v-else-if="field.type === 'devices'" class="device-pick">
+              <div v-if="devicesLoading" class="field__hint">音箱设备加载中…</div>
+              <div v-else-if="!speakerDevices.length" class="field__hint">
+                未发现可用音箱：请先到「小米账号」页绑定账号并同步设备
+              </div>
+              <template v-else>
+                <label v-for="d in speakerDevices" :key="d.device_id" class="device-pick__item">
+                  <input
+                    type="checkbox"
+                    class="checkbox"
+                    :checked="Array.isArray(form.config[field.key]) && form.config[field.key].includes(d.device_id)"
+                    :disabled="saving"
+                    @change="toggleDevice(field.key, d.device_id, $event.target.checked)"
+                  />
+                  <span class="device-pick__name">{{ d.name }}</span>
+                  <span class="led" :class="d.online ? 'led--success' : 'led--offline'" aria-hidden="true"></span>
+                  <span class="device-pick__model">{{ d.model }}</span>
+                </label>
+              </template>
+            </div>
 
             <!-- 下拉 -->
             <select
@@ -685,5 +756,46 @@ function channelTone(channel) {
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;
   }
+}
+</style>
+
+<style scoped>
+/* 音箱设备多选列表 */
+.device-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.device-pick__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.device-pick__item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.device-pick__name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.device-pick__model {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
 }
 </style>

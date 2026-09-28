@@ -25,7 +25,7 @@ const endpoints = [
   { method: 'POST', path: '/speak/stop?device_id=', desc: '停止指定设备的播报', perm: 'stop_speak' },
   { method: 'GET', path: '/speak/status/{task_id}', desc: '查询播报任务状态', perm: 'get_status' },
   { method: 'POST', path: '/speak/devices/scan', desc: '强制刷新设备缓存', perm: 'manage_devices' },
-  { method: 'POST', path: '/notify/send', desc: '统一推送：由渠道把消息送达目标', perm: 'send_notify' },
+  { method: 'POST', path: '/notify/send', desc: '统一推送：显式指定渠道，或不带渠道参数时发到密钥绑定的全部启用渠道', perm: 'send_notify' },
 ]
 
 const errorCodes = [

@@ -3,7 +3,7 @@
 统一消息推送验证模式
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -51,3 +51,7 @@ class NotificationSendResponse(BaseModel):
     message: str = Field(..., description="状态或响应说明")
     log_id: Optional[int] = Field(default=None, description="生成的通知日志记录ID（用于查询真实发送结果）")
     detail: Optional[Any] = Field(default=None, description="底层通道返回的详细回执（同步发送时可用）")
+    results: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="多渠道推送时的逐渠道结果（API Key 免传参模式）：[{channel_id, channel_name, channel_type, success, log_id, message}]",
+    )

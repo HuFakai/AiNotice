@@ -3,7 +3,7 @@
 API密钥相关数据模式
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
@@ -15,6 +15,7 @@ class CreateApiKeyRequest(BaseModel):
     permissions: Optional[Dict[str, bool]] = Field(None, description="权限配置")
     expires_in_days: Optional[int] = Field(None, description="过期天数", gt=0, le=365)
     usage_limit: Optional[int] = Field(None, description="使用限制", gt=0)
+    channel_ids: Optional[List[int]] = Field(None, description="绑定的通知渠道ID列表（调用 /notify/send 未指定渠道时向这些渠道推送）")
 
     @field_validator("permissions")
     @classmethod
@@ -66,6 +67,7 @@ class UpdateApiKeyRequest(BaseModel):
     permissions: Optional[Dict[str, bool]] = Field(None, description="权限配置")
     is_active: Optional[bool] = Field(None, description="是否激活")
     usage_limit: Optional[int] = Field(None, description="使用限制", gt=0)
+    channel_ids: Optional[List[int]] = Field(None, description="绑定的通知渠道ID列表（整体替换语义）")
 
     @field_validator("permissions")
     @classmethod
@@ -102,6 +104,7 @@ class ApiKeyResponse(BaseModel):
     is_usage_exceeded: bool = Field(..., description="是否超出使用限制")
     is_valid: bool = Field(..., description="是否有效")
     permissions: Optional[Dict[str, Any]] = Field(None, description="权限配置")
+    channel_ids: Optional[List[int]] = Field(None, description="绑定的通知渠道ID列表")
     usage_count: int = Field(..., description="使用次数")
     usage_limit: Optional[int] = Field(None, description="使用限制")
     last_used_at: Optional[datetime] = Field(None, description="最后使用时间")
@@ -119,6 +122,7 @@ class ApiKeyCreatedResponse(BaseModel):
     key_name: str = Field(..., description="密钥名称")
     api_key: str = Field(..., description="API密钥（完整显示，仅创建时）")
     permissions: Dict[str, bool] = Field(..., description="权限配置")
+    channel_ids: Optional[List[int]] = Field(None, description="绑定的通知渠道ID列表")
     expires_at: Optional[datetime] = Field(None, description="过期时间")
     usage_limit: Optional[int] = Field(None, description="使用限制")
     created_at: datetime = Field(..., description="创建时间")

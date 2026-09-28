@@ -64,8 +64,10 @@ export const CHANNEL_TYPES = [
   {
     value: 'speak',
     label: '小爱音箱播报',
-    hint: '用已绑定的音箱念出内容，无需额外配置',
-    fields: [],
+    hint: '从已绑定的音箱中选择播报设备，支持多选同时播报',
+    fields: [
+      { key: 'device_ids', label: '播报设备', type: 'devices', required: true, desc: '可多选，消息会同时在所选音箱上播出' },
+    ],
   },
 ]
 

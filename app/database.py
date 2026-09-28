@@ -125,6 +125,8 @@ MIGRATIONS: list[dict] = [
     {"table": "users", "column": "token_version", "ddl": "INTEGER DEFAULT 0"},
     # 扫码会话 Cookie（lp 长轮询需携带 loginUrl 阶段的 Cookie）
     {"table": "mi_qr_sessions", "column": "cookies_json", "ddl": "TEXT"},
+    # API Key 绑定的通知渠道ID列表（JSON 数组文本）
+    {"table": "api_keys", "column": "channel_ids", "ddl": "TEXT"},
 ]
 
 

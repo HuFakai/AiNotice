@@ -37,6 +37,7 @@ class ApiKeyService:
         permissions: Optional[Dict[str, bool]] = None,
         expires_in_days: Optional[int] = None,
         usage_limit: Optional[int] = None,
+        channel_ids: Optional[List[int]] = None,
         client_ip: Optional[str] = None,
         user_agent: Optional[str] = None,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
@@ -75,6 +76,14 @@ class ApiKeyService:
             if not perm_result["valid"]:
                 return False, f"权限配置错误: {', '.join(perm_result['issues'])}", None
 
+            # 校验绑定的通知渠道归属与存在性
+            valid_channel_ids = None
+            if channel_ids:
+                ok, err = await self._validate_channel_ids(user_id, channel_ids)
+                if not ok:
+                    return False, err, None
+                valid_channel_ids = channel_ids
+
             # 生成API密钥（数据库只存哈希与前缀，明文仅在创建响应中返回一次）
             api_key = generate_api_key()
             metadata = build_key_metadata(api_key)
@@ -96,6 +105,7 @@ class ApiKeyService:
                 key_prefix=metadata["key_prefix"],
                 is_active=True,
                 permissions=perm_result["permissions"],
+                channel_ids=valid_channel_ids,
                 usage_limit=usage_limit,
                 expires_at=expires_at,
             )
@@ -122,6 +132,7 @@ class ApiKeyService:
                 "key_name": key_name,
                 "api_key": api_key,
                 "permissions": perm_result["permissions"],
+                "channel_ids": valid_channel_ids,
                 "expires_at": expires_at,  # 直接传datetime对象
                 "usage_limit": usage_limit,
                 "created_at": created_at,  # 传datetime对象
@@ -215,6 +226,7 @@ class ApiKeyService:
         permissions: Optional[Dict[str, bool]] = None,
         is_active: Optional[bool] = None,
         usage_limit: Optional[int] = None,
+        channel_ids: Optional[List[int]] = None,
         client_ip: Optional[str] = None,
         user_agent: Optional[str] = None,
     ) -> Tuple[bool, str]:
@@ -258,6 +270,16 @@ class ApiKeyService:
 
             if usage_limit is not None:
                 api_key_obj.usage_limit = usage_limit
+
+            if channel_ids is not None:
+                # 整体替换语义；传空列表 = 清空绑定
+                if channel_ids:
+                    ok, err = await self._validate_channel_ids(user_id, channel_ids)
+                    if not ok:
+                        return False, err
+                    api_key_obj.channel_ids = channel_ids
+                else:
+                    api_key_obj.channel_ids = []
 
             # 记录活动
             await self.user_service._log_user_activity(
@@ -345,6 +367,25 @@ class ApiKeyService:
         except Exception as e:
             logger.error(f"获取API密钥数量失败: {e}")
             return 0
+
+    async def _validate_channel_ids(self, user_id: int, channel_ids: List[int]) -> Tuple[bool, Optional[str]]:
+        """校验通知渠道归属：必须全部存在且属于该用户"""
+        from app.models.notification_channel import NotificationChannel
+
+        try:
+            stmt = select(NotificationChannel.id).where(
+                NotificationChannel.user_id == user_id,
+                NotificationChannel.id.in_(list(set(channel_ids))),
+            )
+            result = await self.db.execute(stmt)
+            found = {row[0] for row in result.all()}
+            missing = [cid for cid in set(channel_ids) if cid not in found]
+            if missing:
+                return False, f"通知渠道不存在或不属于当前用户: {sorted(missing)}"
+            return True, None
+        except Exception as e:
+            logger.error(f"校验通知渠道归属失败: {e}")
+            return False, "校验通知渠道失败"
 
     async def _check_key_name_exists(self, user_id: int, key_name: str, exclude_id: Optional[int] = None) -> bool:
         """检查密钥名称是否存在"""
