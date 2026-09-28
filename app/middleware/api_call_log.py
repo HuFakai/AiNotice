@@ -2,8 +2,8 @@
 """
 API 调用日志中间件
 
-记录所有已认证的 /api/v1 请求（真实端点、方法、状态码、耗时、来源 IP、
-调用身份），用于统计分析页与调用日志展示。
+仅记录通过 API 密钥发起的 /api/v1 调用（真实端点、方法、状态码、耗时、
+来源 IP），用于统计分析页与调用日志展示——控制台自身的 JWT 请求不计入统计。
 
 设计要点：
 - 纯 ASGI 中间件（非 BaseHTTPMiddleware），不缓冲响应体、不阻塞流式响应
@@ -101,12 +101,13 @@ class ApiCallLogMiddleware:
         finally:
             duration_ms = int((time.perf_counter() - start) * 1000)
             user_id = state.get("auth_user_id")
-            # 仅记录能归属到用户的请求
-            if user_id is not None:
+            api_key_id = state.get("auth_api_key_id")
+            # 仅统计 API 密钥调用：控制台 JWT 请求（auth/me、user/stats 等）不计入
+            if api_key_id is not None:
                 query = scope.get("query_string", b"").decode("latin-1")
                 entry = {
                     "user_id": user_id,
-                    "api_key_id": state.get("auth_api_key_id"),
+                    "api_key_id": api_key_id,
                     "endpoint": path,
                     "method": scope.get("method", "GET"),
                     "request_ip": _client_ip_from_scope(scope),
