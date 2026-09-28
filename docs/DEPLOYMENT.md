@@ -16,13 +16,22 @@ cp .env.example .env
 # 按需编辑 .env（端口、注册开关、CORS 等）
 # JWT_SECRET_KEY / ENCRYPTION_KEY 留空即可：首次启动自动生成强随机值并写回 .env
 
-# 2. 构建并启动
-docker compose up -d --build
+# 2. 直接拉取预构建镜像并启动（推荐，无需本地构建）
+docker compose up -d
+
+# 或本地构建：
+# docker compose up -d --build
 
 # 3. 查看状态与健康检查
 docker compose ps
 curl http://localhost:9000/api/v1/health
 ```
+
+> 每次推送 main 分支后，GitHub Actions 会自动构建并发布镜像到
+> **`ghcr.io/hufakai/ainotice:latest`**（构建记录见仓库 Actions 页，
+> 镜像地址同时写入该次运行的任务摘要）。
+> 首次拉取若提示 401/403：GHCR 包默认私有，可在 GitHub 仓库
+> Packages 设置中改为 Public，或用 PAT 执行 `docker login ghcr.io`。
 
 访问 `http://localhost:9000` 进入管理控制台（宿主机端口跟随 `.env` 中的 `API_PORT`，容器内固定监听 9000）。
 

@@ -1,0 +1,76 @@
+# 自动构建并发布 Docker 镜像到 GHCR
+#
+# 触发：推送 main 分支 / 手动触发
+# 镜像地址：ghcr.io/hufakai/ainotice（latest + main-<sha> 标签）
+# 构建完成后镜像地址会写入该次运行的任务摘要（Summary）页面
+
+name: Docker Image CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,prefix=main-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Output image address
+        run: |
+          IMAGE="$REGISTRY/${IMAGE_NAME,,}"
+          {
+            echo "## 🐳 Docker 镜像已发布"
+            echo ""
+            echo '```bash'
+            echo "docker pull ${IMAGE}:latest"
+            echo '```'
+            echo ""
+            echo "本次构建标签："
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "镜像主页：${{ github.server_url }}/${{ github.repository }}/pkgs/container/${{ github.event.repository.name }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "镜像地址: ${IMAGE}:latest"

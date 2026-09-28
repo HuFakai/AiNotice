@@ -47,9 +47,12 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env          # 按需修改；JWT/加密密钥留空则首次启动自动生成
-docker compose up -d --build  # 构建并启动
+docker compose up -d          # 拉取预构建镜像 ghcr.io/hufakai/ainotice:latest
 curl http://localhost:9000/api/v1/health
+# 本地构建：docker compose up -d --build
 ```
+
+> 每次推送 main 后 GitHub Actions 自动构建并发布镜像到 `ghcr.io/hufakai/ainotice:latest`。
 
 数据持久化：`./data`（SQLite）、`./logs`、`./.env` 三个路径挂载到宿主机。
 可选 PostgreSQL：`docker compose --profile postgres up -d --build`。
