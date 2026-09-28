@@ -9,7 +9,7 @@ from sqlalchemy import Integer, String, DateTime, Text, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class UserActivity(Base):
@@ -34,7 +34,7 @@ class UserActivity(Base):
     user_agent: Mapped[Optional[str]] = mapped_column(String(500), comment="用户代理")
 
     # 时间字段
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+    created_at: Mapped[datetime] = mapped_column(BJDateTime(), server_default=func.now(), comment="创建时间")
 
     # 关系映射
     user: Mapped["User"] = relationship("User", back_populates="activities")

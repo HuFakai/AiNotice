@@ -676,6 +676,10 @@
   align-items: center;
   gap: 8px;
   max-width: 100%;
+  /* 明文密钥很长：允许在卡片内换行，禁止溢出 */
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
   padding: 4px 9px;
   background: var(--well);
   border: 1px solid var(--line);

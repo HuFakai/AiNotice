@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 import enum
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class SyncStatus(str, enum.Enum):
@@ -51,11 +51,11 @@ class MiAccount(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, comment="错误信息")
 
     # 时间字段
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+    created_at: Mapped[datetime] = mapped_column(BJDateTime(), server_default=func.now(), comment="创建时间")
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        BJDateTime(), server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
-    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="最后同步时间")
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(BJDateTime(), comment="最后同步时间")
 
     # 关系映射
     user: Mapped["User"] = relationship("User", back_populates="mi_accounts")

@@ -41,6 +41,7 @@ export const API_ENDPOINTS = [
     desc: '统一推送：显式指定渠道，或不带渠道参数时发到密钥绑定的全部启用渠道',
     perm: 'send_notify',
     body: {
+      title: '接口测试通知',
       content: '通过统一推送发送的测试消息',
       // channel_id: 1,        // 可选：显式指定渠道（覆盖密钥绑定）
       // channel_type: 'webhook',

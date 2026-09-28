@@ -9,7 +9,7 @@ from sqlalchemy import Integer, String, Boolean, DateTime, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class User(Base):
@@ -31,11 +31,11 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", comment="JWT令牌版本")
 
     # 时间字段
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+    created_at: Mapped[datetime] = mapped_column(BJDateTime(), server_default=func.now(), comment="创建时间")
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        BJDateTime(), server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
-    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="最后登录时间")
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(BJDateTime(), comment="最后登录时间")
 
     # 关系映射
     # 统一 lazy="select"：认证热路径不连带查询整张关系图；

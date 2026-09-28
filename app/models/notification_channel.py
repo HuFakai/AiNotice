@@ -9,7 +9,7 @@ from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey, Ind
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class NotificationChannel(Base):
@@ -30,9 +30,9 @@ class NotificationChannel(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否激活")
 
     # 时间字段
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+    created_at: Mapped[datetime] = mapped_column(BJDateTime(), server_default=func.now(), comment="创建时间")
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        BJDateTime(), server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
 
     # 关系映射

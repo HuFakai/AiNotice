@@ -613,9 +613,14 @@ async function toggleActive(key) {
   gap: 8px;
 }
 
+.keycard__secret {
+  align-items: flex-start;
+}
+
 .keycard__secret .chip-key {
   flex: 1;
   min-width: 0;
+  text-align: left;
 }
 
 .keycard__perms {

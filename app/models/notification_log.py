@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 import enum
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class NotificationStatus(str, enum.Enum):
@@ -52,7 +52,7 @@ class NotificationLog(Base):
     )
     error_message: Mapped[Optional[str]] = mapped_column(Text, comment="发送失败的错误信息")
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="发送时间")
+    created_at: Mapped[datetime] = mapped_column(BJDateTime(), server_default=func.now(), comment="发送时间")
 
     # 关系映射
     user: Mapped["User"] = relationship("User", back_populates="notification_logs")

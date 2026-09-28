@@ -5,14 +5,54 @@
 
 import hashlib
 import os
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text, event, inspect
+from sqlalchemy.types import TypeDecorator, DateTime as SQLADateTime
 from loguru import logger
 
 from app.config import settings
+
+
+# ---------------------------------------------------------------------------
+# 时间列类型：库内统一存 UTC，读出统一转为北京时间（Asia/Shanghai, +08:00）
+# ---------------------------------------------------------------------------
+# 背景：SQLite 存 naive 墙钟且不回传时区，历史数据混用 utcnow()/now()，
+# API 直接序列化会把 UTC 时间当本地时间，造成 8 小时偏差。
+# 该 TypeDecorator 保证：API 返回的 datetime 全部带 +08:00，前端 new Date() 即北京时间。
+
+try:
+    from zoneinfo import ZoneInfo
+
+    BJ_TZ = ZoneInfo("Asia/Shanghai")
+except Exception:  # pragma: no cover - zoneinfo 缺失时退回固定偏移
+    BJ_TZ = timezone(timedelta(hours=8))
+
+
+class BJDateTime(TypeDecorator):
+    """北京时间时间列：写入库 UTC，读出 +08:00"""
+
+    impl = SQLADateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            # naive 视为 UTC（库内历史语义）
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            # SQLite 读回 naive 墙钟，库内语义是 UTC
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(BJ_TZ)
 
 
 class Base(DeclarativeBase):

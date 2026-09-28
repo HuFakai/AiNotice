@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy import ForeignKey
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class ApiCallLog(Base):
@@ -54,11 +54,11 @@ class ApiCallLog(Base):
     device_id: Mapped[Optional[str]] = mapped_column(String(100), comment="设备ID")
     device_name: Mapped[Optional[str]] = mapped_column(String(100), comment="设备名称")
     speak_text: Mapped[Optional[str]] = mapped_column(Text, comment="语音播报内容")
-    task_end_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="任务结束时间")
+    task_end_time: Mapped[Optional[datetime]] = mapped_column(BJDateTime(), comment="任务结束时间")
     
     # 时间字段
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), comment="创建时间"
+        BJDateTime(), server_default=func.now(), comment="创建时间"
     )
 
     # 关系映射
@@ -143,10 +143,10 @@ class ApiUsageStats(Base):
     
     # 时间字段
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), comment="创建时间"
+        BJDateTime(), server_default=func.now(), comment="创建时间"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        BJDateTime(), server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
 
     # 关系映射
@@ -214,10 +214,10 @@ class ApiQuota(Base):
     
     # 时间字段
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), comment="创建时间"
+        BJDateTime(), server_default=func.now(), comment="创建时间"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        BJDateTime(), server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
 
     # 关系映射

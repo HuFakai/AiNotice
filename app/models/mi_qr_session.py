@@ -13,7 +13,7 @@ from sqlalchemy import Integer, String, Text, DateTime, JSON, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class MiQrSession(Base):
@@ -42,9 +42,9 @@ class MiQrSession(Base):
     result_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, comment="扫码成功后的凭据（消费后清除）")
 
     # 时间字段
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+    created_at: Mapped[datetime] = mapped_column(BJDateTime(), server_default=func.now(), comment="创建时间")
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        BJDateTime(), server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
 
     # 索引

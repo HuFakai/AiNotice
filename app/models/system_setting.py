@@ -11,7 +11,7 @@ from sqlalchemy.sql import func
 import enum
 import json
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class SettingType(str, enum.Enum):
@@ -42,9 +42,9 @@ class SystemSetting(Base):
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否公开可见")
 
     # 时间字段
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+    created_at: Mapped[datetime] = mapped_column(BJDateTime(), server_default=func.now(), comment="创建时间")
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        BJDateTime(), server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
 
     # 索引

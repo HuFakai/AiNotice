@@ -9,7 +9,7 @@ from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey, JSO
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from app.database import Base
+from app.database import Base, BJDateTime
 
 
 class ApiKey(Base):
@@ -49,12 +49,12 @@ class ApiKey(Base):
     usage_limit: Mapped[Optional[int]] = mapped_column(Integer, comment="使用限制")
 
     # 时间字段
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+    created_at: Mapped[datetime] = mapped_column(BJDateTime(), server_default=func.now(), comment="创建时间")
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        BJDateTime(), server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
-    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="最后使用时间")
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="过期时间")
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(BJDateTime(), comment="最后使用时间")
+    expires_at: Mapped[Optional[datetime]] = mapped_column(BJDateTime(), comment="过期时间")
 
     # 关系映射
     user: Mapped["User"] = relationship("User", back_populates="api_keys")
