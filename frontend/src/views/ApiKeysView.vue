@@ -1,9 +1,9 @@
 <script setup>
 /**
  * API 密钥 /api-keys
- * - 列表只展示掩码 api_key
- * - 创建响应里的完整密钥仅此一次：弹出「密钥已创建」模态，强制勾选「我已保存」后才能关闭
- * - 权限用开关组编辑（speak / get_devices / manage_devices / stop_speak / set_volume / get_status / send_notify）
+ * - 密钥明文存储与展示（产品决策）：点击卡片上的密钥可直接复制
+ * - 历史哈希存储行（明文不可恢复）显示掩码并提示重新创建
+ * - 权限用开关组编辑；绑定通知渠道走 MultiSelect 下拉多选
  * - 删除走 ConfirmDialog
  */
 import { computed, onMounted, ref } from 'vue'
@@ -41,10 +41,25 @@ const createForm = ref({
   channel_ids: [],
 })
 
-/* ---------------- 一次性密钥 ---------------- */
-const secretOpen = ref(false)
-const createdSecret = ref(null)
-const acknowledged = ref(false)
+/* ---------------- 密钥复制 ---------------- */
+const LEGACY_HASH_RE = /^[0-9a-f]{64}$/
+
+function isLegacyHash(keyStr) {
+  return LEGACY_HASH_RE.test(keyStr || '')
+}
+
+async function copyKey(key) {
+  if (!key?.api_key || isLegacyHash(key.api_key)) {
+    toastError('该密钥为旧版哈希存储，无法复制明文，请删除后重新创建')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(key.api_key)
+    toastSuccess('密钥已复制到剪贴板')
+  } catch {
+    toastError('复制失败，请手动选择复制')
+  }
+}
 
 /* ---------------- 编辑 ---------------- */
 const editOpen = ref(false)
@@ -170,33 +185,15 @@ async function submitCreate() {
 
   creating.value = true
   try {
-    const data = await createApiKey(payload)
+    await createApiKey(payload)
     createOpen.value = false
-
-    // 完整密钥只在本次响应中出现，立即交给一次性模态组件
-    createdSecret.value = {
-      api_key: data?.api_key || '',
-      key_name: data?.key_name || name,
-      expires_at: data?.expires_at || null,
-      usage_limit: data?.usage_limit ?? null,
-    }
-    acknowledged.value = false
-    secretOpen.value = true
-
+    toastSuccess('密钥已创建，点击卡片中的密钥即可复制')
     await load()
   } catch (err) {
     createError.value = errorText(err, '创建失败，请稍后重试')
   } finally {
     creating.value = false
   }
-}
-
-/** 强制确认后才允许关闭一次性密钥模态 */
-function closeSecret() {
-  if (!acknowledged.value) return
-  secretOpen.value = false
-  createdSecret.value = null
-  toastSuccess('密钥已创建，请妥善保管')
 }
 
 /* ---------------- 编辑流程 ---------------- */
@@ -283,7 +280,7 @@ async function toggleActive(key) {
       nav="02"
       eyebrow="API KEYS"
       title="API 密钥"
-      desc="密钥用于服务端调用接口。完整密钥仅在创建时展示一次，请立即保存到安全位置。"
+      desc="密钥用于服务端调用接口。明文展示，点击卡片中的密钥即可复制。"
     >
       <template #actions>
         <span class="tag-mono">{{ activeCount }} / {{ keys.length }} 有效</span>
@@ -296,8 +293,7 @@ async function toggleActive(key) {
       <div class="notice notice--accent">
         <span class="led led--active" aria-hidden="true"></span>
         <span>
-          列表中的密钥为掩码形式（例如 <code class="mono">xai_sk_••••abcd</code>）。平台不以明文存储密钥，
-          关闭创建弹窗后将无法再次查看完整密钥。
+          密钥以明文存储与展示，点击卡片中的密钥即可复制。历史哈希版本的旧密钥无法回显明文，建议删除后重新创建。
         </span>
       </div>
 
@@ -330,8 +326,16 @@ async function toggleActive(key) {
 
           <div class="card__body">
             <div class="keycard__secret">
-              <code class="chip-key chip-key--accent truncate">{{ key.api_key || '••••••••' }}</code>
-              <span class="tag-mono">掩码</span>
+              <code
+                class="chip-key chip-key--accent chip-key--copy"
+                :class="{ 'chip-key--legacy': isLegacyHash(key.api_key) }"
+                :title="isLegacyHash(key.api_key) ? '旧版哈希存储密钥，明文不可见，建议删除后重新创建' : '点击复制完整密钥'"
+                role="button"
+                tabindex="0"
+                @click="copyKey(key)"
+                @keydown.enter="copyKey(key)"
+              >{{ isLegacyHash(key.api_key) ? key.api_key.slice(0, 12) + '••••（旧版哈希）' : key.api_key }}</code>
+              <span class="tag-mono" :class="{ 'tag-mono--ok': !isLegacyHash(key.api_key) }">{{ isLegacyHash(key.api_key) ? '旧版' : '点击复制' }}</span>
             </div>
 
             <div class="dl mt-3">
@@ -475,57 +479,6 @@ async function toggleActive(key) {
         <button type="button" class="btn btn--primary" :disabled="creating" @click="submitCreate">
           <span v-if="creating" class="spinner"></span>
           <span>{{ creating ? '创建中' : '创建密钥' }}</span>
-        </button>
-      </template>
-    </Modal>
-
-    <!-- ============ 一次性完整密钥 ============ -->
-    <Modal
-      :open="secretOpen"
-      title="密钥已创建"
-      sub="这是唯一一次展示完整密钥的机会"
-      size="md"
-      :lock-close="true"
-    >
-      <div class="secret">
-        <div class="notice notice--warn">
-          <span class="led led--warn" aria-hidden="true"></span>
-          <span>
-            请立即复制并保存到密码管理器或服务端环境变量中。关闭本窗口后，平台将无法再次显示该密钥。
-          </span>
-        </div>
-
-        <div class="secret__box">
-          <div class="secret__label tag-mono">完整密钥 · {{ createdSecret?.key_name }}</div>
-          <code class="secret__value break-all">{{ createdSecret?.api_key || '（未返回密钥）' }}</code>
-          <CopyButton
-            :text="createdSecret?.api_key || ''"
-            label="复制密钥"
-            subject="API 密钥"
-            class="mt-2"
-          />
-        </div>
-
-        <div class="dl">
-          <div class="dl__item">
-            <div class="dl__key">有效期</div>
-            <div class="dl__val td-dim">{{ formatExpiry(createdSecret?.expires_at) }}</div>
-          </div>
-          <div class="dl__item">
-            <div class="dl__key">调用上限</div>
-            <div class="dl__val num">{{ createdSecret?.usage_limit ?? '不限' }}</div>
-          </div>
-        </div>
-
-        <label class="checkline mt-3">
-          <input v-model="acknowledged" type="checkbox" />
-          <span>我已将完整密钥保存到安全位置，知悉关闭后无法再次查看</span>
-        </label>
-      </div>
-
-      <template #footer>
-        <button type="button" class="btn btn--primary" :disabled="!acknowledged" @click="closeSecret">
-          我已保存，关闭
         </button>
       </template>
     </Modal>
@@ -763,5 +716,27 @@ async function toggleActive(key) {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-dim);
+}
+</style>
+
+<style scoped>
+/* 明文密钥 chip：可点击复制 */
+.chip-key--copy {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.chip-key--copy:hover {
+  border-color: rgba(255, 105, 0, 0.6);
+  background: rgba(255, 105, 0, 0.08);
+}
+
+.chip-key--legacy {
+  opacity: 0.65;
+  cursor: help;
+}
+
+.tag-mono--ok {
+  color: var(--signal-green);
 }
 </style>

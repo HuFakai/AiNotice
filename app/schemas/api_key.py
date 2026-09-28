@@ -98,7 +98,7 @@ class ApiKeyResponse(BaseModel):
 
     id: int = Field(..., description="密钥ID")
     key_name: str = Field(..., description="密钥名称")
-    api_key: str = Field(..., description="API密钥（掩码显示）")
+    api_key: str = Field(..., description="API密钥（明文）")
     is_active: bool = Field(..., description="是否激活")
     is_expired: bool = Field(..., description="是否过期")
     is_usage_exceeded: bool = Field(..., description="是否超出使用限制")
@@ -120,7 +120,7 @@ class ApiKeyCreatedResponse(BaseModel):
 
     id: int = Field(..., description="密钥ID")
     key_name: str = Field(..., description="密钥名称")
-    api_key: str = Field(..., description="API密钥（完整显示，仅创建时）")
+    api_key: str = Field(..., description="API密钥（明文）")
     permissions: Dict[str, bool] = Field(..., description="权限配置")
     channel_ids: Optional[List[int]] = Field(None, description="绑定的通知渠道ID列表")
     expires_at: Optional[datetime] = Field(None, description="过期时间")

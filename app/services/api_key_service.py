@@ -97,9 +97,8 @@ class ApiKeyService:
             api_key_obj = ApiKey(
                 user_id=user_id,
                 key_name=key_name,
-                # SQLite 旧表 api_key/api_secret 为 NOT NULL，存哈希副本/空串以兼容；
-                # 校验一律走 key_hash，明文不落库
-                api_key=metadata["key_hash"],
+                # 明文存储（产品决策：卡片直接展示+点击复制）；key_hash 同时保留用于校验
+                api_key=api_key,
                 api_secret="",
                 key_hash=metadata["key_hash"],
                 key_prefix=metadata["key_prefix"],

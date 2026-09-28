@@ -18,10 +18,9 @@ router = APIRouter(prefix="/api-keys", tags=["API密钥管理"])
 
 
 def _display_key(api_key_obj) -> str:
-    """列表/详情展示用的掩码密钥（哈希存储行用前缀，历史明文行走旧掩码属性）"""
-    prefix = getattr(api_key_obj, "key_prefix", None)
-    if prefix:
-        return f"{prefix}••••"
+    """列表展示：优先完整明文；历史哈希存储行（明文不可恢复）回退掩码"""
+    if api_key_obj.api_key:
+        return api_key_obj.api_key
     return api_key_obj.masked_api_key
 
 

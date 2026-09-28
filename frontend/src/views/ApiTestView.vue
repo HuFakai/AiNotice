@@ -3,17 +3,16 @@
  * 接口测试（API Playground）/api-test
  *
  * - 端点清单与接口文档页共用 api/endpoints.js（单一数据源）
- * - 认证：默认当前登录态(JWT)；可切换为粘贴完整 API Key（仅存本页内存，刷新即失）
- *   → 列表接口只回掩码密钥，完整密钥仅创建时可见，因此测权限位链路需手动粘贴
+ * - 认证：默认当前登录态(JWT)；可切换为从下拉框选择自己的 API 密钥（明文接口直取）
  * - 用独立 fetch（不走 client.js）：4xx/5xx 原样展示，不触发全局 401 跳登录
  * - 请求历史仅保存在内存（最多 20 条）
  */
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import CopyButton from '../components/CopyButton.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { API_ENDPOINTS, parseEndpointPath } from '../api/endpoints.js'
-import { PERMISSIONS } from '../api/apiKeys.js'
+import { PERMISSIONS, listApiKeys } from '../api/apiKeys.js'
 import { getToken } from '../api/client.js'
 
 const selectedIdx = ref(0)
@@ -21,7 +20,28 @@ const endpoint = computed(() => API_ENDPOINTS[selectedIdx.value])
 
 /* 认证 */
 const authMode = ref('jwt') // jwt | apikey
-const apiKeyInput = ref('')
+const apiKeys = ref([])
+const selectedKeyId = ref('')
+const keysLoading = ref(false)
+
+async function loadKeys() {
+  keysLoading.value = true
+  try {
+    apiKeys.value = await listApiKeys()
+    if (!selectedKeyId.value && apiKeys.value.length) {
+      const active = apiKeys.value.find((k) => k.is_active) || apiKeys.value[0]
+      selectedKeyId.value = active.id
+    }
+  } catch {
+    apiKeys.value = []
+  } finally {
+    keysLoading.value = false
+  }
+}
+
+const selectedKey = computed(() => apiKeys.value.find((k) => String(k.id) === String(selectedKeyId.value)) || null)
+
+onMounted(loadKeys)
 
 /* 参数与请求体 */
 const pathParams = ref({})
@@ -98,9 +118,9 @@ async function send() {
   /* 认证头：JWT 或手动粘贴的完整密钥 */
   const headers = { 'Content-Type': 'application/json' }
   if (authMode.value === 'apikey') {
-    const key = apiKeyInput.value.trim()
-    if (!key.startsWith('xai_sk_')) {
-      respError.value = '请粘贴完整的 API 密钥（以 xai_sk_ 开头）'
+    const key = selectedKey.value?.api_key
+    if (!key || !key.startsWith('xai_sk_')) {
+      respError.value = '请先选择一个可用的 API 密钥（旧版哈希密钥无明文，请在密钥页重新创建）'
       return
     }
     headers.Authorization = `Bearer ${key}`
@@ -149,6 +169,7 @@ async function send() {
       queryParams: { ...queryParams.value },
       body: bodyText.value,
       authMode: authMode.value,
+      keyId: selectedKeyId.value,
     })
     history.value = history.value.slice(0, 20)
   } catch (err) {
@@ -166,6 +187,7 @@ function restoreHistory(item) {
   queryParams.value = { ...item.queryParams }
   bodyText.value = item.body || ''
   authMode.value = item.authMode || 'jwt'
+  if (item.keyId) selectedKeyId.value = item.keyId
   respStatus.value = null
   respText.value = ''
 }
@@ -227,15 +249,18 @@ function statusTone(code) {
               </button>
             </div>
             <div v-if="authMode === 'apikey'" class="mt-2">
-              <input
-                v-model="apiKeyInput"
-                class="input input--mono"
-                type="password"
-                placeholder="粘贴完整密钥（xai_sk_...），仅保存在本页面内存"
-                autocomplete="off"
-                :disabled="sending"
-              />
-              <div class="field__hint">密钥只存在于当前页面内存，不会写入本地存储，刷新后需重新粘贴</div>
+              <div v-if="keysLoading" class="field__hint">密钥列表加载中…</div>
+              <div v-else-if="!apiKeys.length" class="field__hint">
+                还没有 API 密钥：请先到「API 密钥」页创建
+              </div>
+              <template v-else>
+                <select v-model="selectedKeyId" class="select" :disabled="sending">
+                  <option v-for="k in apiKeys" :key="k.id" :value="k.id">
+                    {{ k.key_name }}（{{ k.is_active ? '有效' : '已禁用' }}）
+                  </option>
+                </select>
+                <div class="field__hint">使用所选密钥的权限位与绑定渠道发起调用</div>
+              </template>
             </div>
           </div>
 
