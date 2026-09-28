@@ -45,6 +45,8 @@ class MiServiceWrapper:
         self._mi_service: Optional[MiIOService] = None
         self._mi_account: Optional[MiAccount] = None
         self._mina_service: Optional[MiNAService] = None
+        # MiNA deviceId 与 MiIO did 的映射（MiNA ubus 需要 MiNA id，MiIO 操作用 did）
+        self._mina_did_map: Dict[str, str] = {}
         self._devices_cache: Dict[str, DeviceInfo] = {}
         self._cache_timestamp = 0
         self._cache_ttl = 300  # 缓存5分钟
@@ -108,6 +110,7 @@ class MiServiceWrapper:
         self._mi_service = None
         self._mi_account = None
         self._mina_service = None
+        self._mina_did_map = {}
         self._devices_cache.clear()
         logger.info(f"设置自定义认证信息: {username}")
 
@@ -148,6 +151,7 @@ class MiServiceWrapper:
         self._mi_service = None
         self._mi_account = None
         self._mina_service = None
+        self._mina_did_map = {}
         self._devices_cache.clear()
         logger.info("清除自定义认证信息")
 
@@ -185,7 +189,25 @@ class MiServiceWrapper:
         if self._mina_service is None:
             await self._get_mi_service()  # 确保 MiAccount 已构建
             self._mina_service = MiNAService(self._mi_account)
+            # 构建 miotDID -> MiNA deviceID 映射：
+            # 平台设备表存的是 MiIO did（来自 miio device_list），而 MiNA ubus
+            # 只认 MiNA 的 deviceID，需要转换（此前直接传 did 导致 invalid admin）
+            try:
+                data = await self._mina_service.device_list()
+                items = data.get("devices") if isinstance(data, dict) else (data or [])
+                self._mina_did_map = {
+                    str(item.get("miotDID")): item.get("deviceID")
+                    for item in (items or [])
+                    if item.get("miotDID") and item.get("deviceID")
+                }
+            except Exception as e:
+                logger.warning(f"构建 MiNA 设备映射失败（后续按原ID尝试）: {type(e).__name__}: {e}")
+                self._mina_did_map = {}
         return self._mina_service
+
+    def _resolve_mina_device_id(self, device_id: str) -> str:
+        """把 MiIO did 解析为 MiNA deviceID（无映射时原样返回）"""
+        return self._mina_did_map.get(str(device_id), device_id)
 
     async def _get_mi_service(self) -> MiIOService:
         """获取MiIOService实例"""
@@ -344,7 +366,7 @@ class MiServiceWrapper:
             # 参考：Yonsm/MiService 的 MiNAService 与 Do1e/mijia-api 的实现。
             mina_ok = False
             try:
-                mina_ok = await mina.text_to_speech(target_device_id, text)
+                mina_ok = await mina.text_to_speech(self._resolve_mina_device_id(target_device_id), text)
             except Exception as mina_err:
                 logger.warning(f"MiNA text_to_speech 失败: {type(mina_err).__name__}: {mina_err}，回退 MIoT")
 
@@ -381,7 +403,7 @@ class MiServiceWrapper:
             return {"success": True, "device_id": device_id, "url": url}
         try:
             mina = await self._get_mina_service()
-            ok = await mina.play_by_url(device_id, url)
+            ok = await mina.play_by_url(self._resolve_mina_device_id(device_id), url)
             if ok:
                 logger.info(f"设备 {device_id} 开始播放音频: {url[:60]}")
                 return {"success": True, "device_id": device_id, "url": url, "method": "play_by_url"}
@@ -409,7 +431,7 @@ class MiServiceWrapper:
             mina = await self._get_mina_service()
             stopped = False
             try:
-                stopped = await mina.player_stop(device_id)
+                stopped = await mina.player_stop(self._resolve_mina_device_id(device_id))
             except Exception as mina_err:
                 logger.warning(f"MiNA player_stop 失败: {type(mina_err).__name__}: {mina_err}，回退 MIoT")
 
@@ -461,7 +483,7 @@ class MiServiceWrapper:
                 volume_ok = False
                 try:
                     mina = await self._get_mina_service()
-                    volume_ok = await mina.player_set_volume(device_id, volume)
+                    volume_ok = await mina.player_set_volume(self._resolve_mina_device_id(device_id), volume)
                 except Exception as mina_err:
                     logger.warning(f"MiNA player_set_volume 失败: {type(mina_err).__name__}: {mina_err}，回退 MIoT")
 

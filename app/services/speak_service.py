@@ -649,6 +649,22 @@ class SpeakService:
 
             if result["success"]:
                 logger.info(f"设备 {device_id} 音量设置成功: {volume}")
+                # 持久化音量，刷新后仍是设置值（此前只改设备不改库，刷新回到默认值）
+                if user_id and db:
+                    try:
+                        from sqlalchemy import select
+
+                        from app.models.device import Device
+
+                        stmt = select(Device).where(Device.user_id == user_id, Device.device_id == device_id)
+                        dresult = await db.execute(stmt)
+                        device_row = dresult.scalar_one_or_none()
+                        if device_row:
+                            device_row.volume = volume
+                            await db.commit()
+                            logger.info(f"音量已持久化: 设备={device_id}, volume={volume}")
+                    except Exception as persist_err:
+                        logger.warning(f"音量持久化失败（不影响设置结果）: {persist_err}")
             else:
                 logger.error(f"设备 {device_id} 音量设置失败: {result.get('error')}")
 
