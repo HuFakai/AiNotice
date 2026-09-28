@@ -96,6 +96,66 @@ if (!res.ok) throw new Error(\`HTTP \${res.status}\`);
 console.log(await res.json());`
 )
 
+const curlNotifyBasic = computed(
+  () => `# 不带 channel_id/channel_type：自动发到密钥绑定的全部启用渠道
+curl -s -X POST "${baseUrl.value}/notify/send" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $XAI_API_KEY" \
+  -d '{
+    "title": "服务器告警",
+    "content": "CPU 使用率超过 90%，请及时处理"
+  }'`
+)
+
+const curlNotifyChannel = computed(
+  () => `# 显式指定渠道（channel_id 覆盖密钥绑定）
+curl -s -X POST "${baseUrl.value}/notify/send" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $XAI_API_KEY" \
+  -d '{
+    "channel_id": 1,
+    "title": "可选标题",
+    "content": "通过指定渠道发送的消息"
+  }'`
+)
+
+const curlNotifyTemp = computed(
+  () => `# 临时渠道：直接指定类型与配置，无需预先创建
+curl -s -X POST "${baseUrl.value}/notify/send" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $XAI_API_KEY" \
+  -d '{
+    "channel_type": "webhook",
+    "config": { "url": "https://example.com/hook", "method": "POST" },
+    "title": "可选标题",
+    "content": "通过临时 Webhook 发送的消息"
+  }`
+)
+
+const pythonNotify = computed(
+  () => `import os, requests
+
+BASE = os.environ["XAI_API_URL"]        # ${baseUrl.value}
+KEY  = os.environ["XAI_API_KEY"]        # xai_sk_...
+
+resp = requests.post(
+    f"{BASE}/notify/send",
+    headers={"Authorization": f"Bearer {KEY}"},
+    json={
+        "title": "部署通知",           # 选填，可为空或不传
+        "content": "v1.2.0 已发布到生产环境",
+        # "channel_id": 1,            # 可选：显式指定渠道
+    },
+    timeout=15,
+)
+resp.raise_for_status()
+data = resp.json()
+print(data["message"])
+# 多渠道推送时，逐渠道结果在 data["results"] 里：
+for r in data.get("results") or []:
+    print(r["channel_name"], "->", r["success"], r["log_id"])`
+)
+
 const envSnippet = computed(
   () => `# macOS / Linux
 export XAI_API_URL="${baseUrl.value}"
@@ -269,6 +329,67 @@ function methodClass(method) {
               <code class="mono">volume</code> / <code class="mono">endvolume</code>（0-100）、
               <code class="mono">speed</code>（0.5-2.0）、
               <code class="mono">voice_type</code>（male / female / child）。
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 统一推送示例 -->
+      <section class="card">
+        <div class="card__head">
+          <span class="card__title">
+            <span class="led led--warn" aria-hidden="true"></span>
+            统一推送示例
+          </span>
+          <span class="tag-mono">POST /notify/send</span>
+        </div>
+        <div class="card__body">
+          <div class="grid grid--2">
+            <div class="code">
+              <div class="code__head">
+                <span class="tag-mono">密钥绑定渠道（推荐）</span>
+                <CopyButton :text="curlNotifyBasic" label="复制" subject="curl 示例" />
+              </div>
+              <pre><code>{{ curlNotifyBasic }}</code></pre>
+            </div>
+
+            <div class="code">
+              <div class="code__head">
+                <span class="tag-mono">指定渠道</span>
+                <CopyButton :text="curlNotifyChannel" label="复制" subject="curl 示例" />
+              </div>
+              <pre><code>{{ curlNotifyChannel }}</code></pre>
+            </div>
+
+            <div class="code">
+              <div class="code__head">
+                <span class="tag-mono">临时渠道</span>
+                <CopyButton :text="curlNotifyTemp" label="复制" subject="curl 示例" />
+              </div>
+              <pre><code>{{ curlNotifyTemp }}</code></pre>
+            </div>
+
+            <div class="code">
+              <div class="code__head">
+                <span class="tag-mono">Python</span>
+                <CopyButton :text="pythonNotify" label="复制" subject="Python 示例" />
+              </div>
+              <pre><code>{{ pythonNotify }}</code></pre>
+            </div>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="notice notice--info">
+            <span class="led led--info" aria-hidden="true"></span>
+            <span>
+              请求体字段：<code class="mono">content</code>（必填）、
+              <code class="mono">title</code>（选填，可为空，邮件作主题、IM 作标题）、
+              <code class="mono">channel_id</code>（显式指定渠道，覆盖密钥绑定）、
+              <code class="mono">channel_type</code> + <code class="mono">config</code>（临时渠道）、
+              <code class="mono">recipient</code>（覆盖渠道默认目标）、
+              <code class="mono">extra</code>（音箱音量等附加参数）。
+              异步接口：success=true 仅代表已受理，真实结果按 <code class="mono">log_id</code> 查询通知日志。
             </span>
           </div>
         </div>
