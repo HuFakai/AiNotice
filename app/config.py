@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # API服务配置
     api_host: str = Field(default="0.0.0.0", description="API服务器地址")
-    api_port: int = Field(default=8000, description="API服务器端口")
+    api_port: int = Field(default=9088, description="API服务器端口")
     api_debug: bool = Field(default=False, description="是否开启调试模式")
 
     # 数据库配置

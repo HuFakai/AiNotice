@@ -39,11 +39,11 @@ COPY --from=frontend-builder /build/dist/ ./frontend/dist/
 # 运行时持久化目录（由 compose/docker run 挂载卷）
 RUN mkdir -p /app/data /app/logs
 
-EXPOSE 9000
+EXPOSE 9088
 
-# 健康检查：探测 /api/v1/health（内部固定 9000 端口）
+# 健康检查：探测 /api/v1/health（内部固定 9088 端口）
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9000/api/v1/health', timeout=4).status==200 else 1)" || exit 1
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9088/api/v1/health', timeout=4).status==200 else 1)" || exit 1
 
-# uvicorn 直接启动（容器内不使用 reload）；内部端口固定 9000，外部映射由 -p/compose 决定
-CMD ["sh", "-c", "exec python -m uvicorn app.main:app --host 0.0.0.0 --port 9000"]
+# uvicorn 直接启动（容器内不使用 reload）；内部端口固定 9088，外部映射由 -p/compose 决定
+CMD ["sh", "-c", "exec python -m uvicorn app.main:app --host 0.0.0.0 --port 9088"]

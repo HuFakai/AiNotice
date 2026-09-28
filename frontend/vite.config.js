@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
   const rootEnv = loadEnv(mode, repoRoot, '')
   const localEnv = loadEnv(mode, process.cwd(), '')
 
-  const apiPort = rootEnv.API_PORT || localEnv.API_PORT || '9000'
+  const apiPort = rootEnv.API_PORT || localEnv.API_PORT || '9088'
   const apiHost = rootEnv.API_HOST && rootEnv.API_HOST !== '0.0.0.0' ? rootEnv.API_HOST : '127.0.0.1'
   const target = localEnv.VITE_API_TARGET || rootEnv.VITE_API_TARGET || `http://${apiHost}:${apiPort}`
 

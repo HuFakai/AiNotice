@@ -48,7 +48,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env          # 按需修改；JWT/加密密钥留空则首次启动自动生成
 docker compose up -d          # 拉取预构建镜像 ghcr.io/hufakai/ainotice:latest
-curl http://localhost:9000/api/v1/health
+curl http://localhost:9088/api/v1/health
 # 本地构建：docker compose up -d --build
 ```
 
@@ -74,7 +74,7 @@ python start.py               # 端口跟随 .env 的 API_PORT
 
 ### 1. 用户注册
 ```bash
-curl -X POST http://localhost:9000/api/v1/auth/register \
+curl -X POST http://localhost:9088/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "your_username",
@@ -86,7 +86,7 @@ curl -X POST http://localhost:9000/api/v1/auth/register \
 
 ### 2. 用户登录
 ```bash
-curl -X POST http://localhost:9000/api/v1/auth/login \
+curl -X POST http://localhost:9088/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "username_or_email": "your_username",
@@ -96,7 +96,7 @@ curl -X POST http://localhost:9000/api/v1/auth/login \
 
 ### 3. 创建API密钥
 ```bash
-curl -X POST http://localhost:9000/api/v1/api-keys \
+curl -X POST http://localhost:9088/api/v1/api-keys \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -113,10 +113,10 @@ curl -X POST http://localhost:9000/api/v1/api-keys \
 ```bash
 # 获取设备列表
 curl -H "Authorization: Bearer xai_sk_your_api_key" \
-  http://localhost:9000/api/v1/devices
+  http://localhost:9088/api/v1/devices
 
 # 语音播放
-curl -X POST http://localhost:9000/api/v1/speak \
+curl -X POST http://localhost:9088/api/v1/speak \
   -H "Authorization: Bearer xai_sk_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
